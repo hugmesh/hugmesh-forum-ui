@@ -1,0 +1,129 @@
+.vn-editor {
+  margin-block: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--forum-surface);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  /* Height cap: with a full sticker grid (up to the 64-item service cap) the
+   * panel would push the whole forum below the fold — bound it to the
+   * viewport and scroll INSIDE; overscroll containment keeps the page from
+   * scroll-chaining while the panel is being browsed. */
+  max-height: min(75vh, 40rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  h2 {
+    margin-block: 0 0.5rem;
+  }
+}
+
+.vn-editor__field {
+  margin-block: 0.75rem;
+  border: 0;
+  padding: 0;
+
+  legend {
+    font-weight: 600;
+    margin-block-end: 0.35rem;
+    padding: 0;
+  }
+
+  > label {
+    display: block;
+    margin-block-end: 0.25rem;
+  }
+
+  select {
+    background: var(--forum-bg);
+    color: var(--forum-text);
+    border: 1px solid var(--forum-border);
+    border-radius: var(--forum-radius);
+    padding: 0.35rem 0.5rem;
+  }
+}
+
+.vn-editor__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  > label {
+    display: inline;
+    margin: 0;
+  }
+}
+
+.vn-editor__stickers,
+.vn-editor__skins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.vn-editor__sticker,
+.vn-editor__skin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--forum-text-muted);
+  cursor: pointer;
+
+  img {
+    width: 3rem;
+    height: 3rem;
+    object-fit: contain;
+  }
+
+  input[type='radio']:checked ~ span:last-child {
+    color: var(--forum-accent-soft);
+    font-weight: 700;
+  }
+}
+
+.vn-editor__sticker-none {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border: 1px dashed var(--forum-border);
+  border-radius: var(--forum-radius);
+  font-size: 1.4rem;
+}
+
+// WCAG 2.5.5/2.5.8: the whole LABEL is the touch target for the radio
+// swatches (the radio itself is tiny) — guarantee >=44px boxes on coarse
+// pointers, matching the global button/input rule in styles.scss.
+@media (pointer: coarse) {
+  .vn-editor__sticker,
+  .vn-editor__skin {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+.forum-muted {
+  color: var(--forum-text-muted);
+}
+
+.forum-error {
+  color: var(--forum-error);
+}
+
+.forum-btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: var(--forum-accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--forum-radius);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}

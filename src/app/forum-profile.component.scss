@@ -1,0 +1,15 @@
+.forum-profile {
+  display: block;
+}
+
+.forum-muted {
+  color: var(--forum-text-muted);
+}
+
+.forum-error {
+  color: var(--forum-error);
+}
+
+.forum-profile__fragment {
+  margin-block-start: 1rem;
+}

@@ -1,0 +1,130 @@
+@if (loading()) {
+  <p class="forum-muted" role="status">Loading topic…</p>
+} @else if (error()) {
+  <p class="forum-error" role="alert">{{ error() }}</p>
+} @else if (detail(); as d) {
+  <header class="topic__head">
+    <h1>{{ d.topic.title }}</h1>
+    @if (d.topic.locked) {
+      <p class="topic__locked" role="status">This topic is locked. New replies are disabled.</p>
+    }
+    @if (canModerate()) {
+      <div class="topic__mod" role="group" aria-label="Moderation">
+        <button
+          type="button"
+          class="forum-btn forum-btn--ghost"
+          data-testid="mod-lock-toggle"
+          [disabled]="busy()"
+          (click)="toggleLock()"
+        >
+          {{ d.topic.locked ? 'Unlock topic' : 'Lock topic' }}
+        </button>
+      </div>
+    }
+  </header>
+
+  <section class="topic__posts" aria-label="Posts in this topic">
+    @for (p of d.posts; track trackId($index, p)) {
+      <article class="forum-post" [class.forum-post--vn]="!!spriteUrl(p)" [attr.data-post-id]="p.id">
+        @if (spriteUrl(p); as sprite) {
+          <!-- a11y: the sprite names its author; overflow: a broken ref (deleted
+               sticker/avatar) hides itself instead of leaving a broken-image box. -->
+          <img
+            class="forum-post__sprite"
+            data-testid="post-sprite"
+            [src]="sprite"
+            [alt]="p.authorLabel + ' character'"
+            loading="lazy"
+            decoding="async"
+            (error)="hideBrokenSprite($event)"
+          />
+        }
+        <div class="forum-post__main">
+          <h3 class="forum-post__author">
+            <a [routerLink]="['../../profile', p.authorSubject]">{{ p.authorLabel }}</a>
+            <span class="forum-post__when">{{ p.createdAt }}</span>
+            @if (p.editedAt) {
+              <span class="forum-post__edited">(edited)</span>
+            }
+          </h3>
+
+          @if (editingId() === p.id) {
+            <label class="sr" [attr.for]="'edit-' + p.id">Edit post</label>
+            <textarea
+              [id]="'edit-' + p.id"
+              class="forum-post__editor"
+              rows="4"
+              [ngModel]="editBody()"
+              (ngModelChange)="editBody.set($event)"
+            ></textarea>
+            <div class="forum-post__actions">
+              <button type="button" (click)="saveEdit(p)" [disabled]="busy()" data-testid="post-save">Save</button>
+              <button type="button" (click)="cancelEdit()" data-testid="post-cancel">Cancel</button>
+            </div>
+          } @else {
+            <div class="forum-post__body" [innerHTML]="safeBody(p)"></div>
+            @if (speechAvailable) {
+              <button
+                type="button"
+                class="forum-post__speak"
+                data-testid="post-read-aloud"
+                [attr.aria-pressed]="speakingPostId() === p.id"
+                [attr.aria-label]="(speakingPostId() === p.id ? 'Stop reading post by ' : 'Read aloud post by ') + p.authorLabel"
+                (click)="toggleSpeak(p)"
+              >
+                {{ speakingPostId() === p.id ? 'Stop' : 'Read aloud' }}
+              </button>
+            }
+            @if (canEdit(p)) {
+              <div class="forum-post__actions">
+                <button type="button" (click)="startEdit(p)" data-testid="post-edit">Edit</button>
+                <button type="button" (click)="deletePost(p)" [disabled]="busy()" data-testid="post-delete">Delete</button>
+              </div>
+            }
+          }
+        </div>
+      </article>
+    }
+  </section>
+
+  <div class="topic__outcome" role="status" aria-live="polite">
+    @if (outcome()) {
+      <p [class.forum-error]="outcome()!.kind === 'alert'">{{ outcome()!.text }}</p>
+    }
+  </div>
+
+  @if (canPost() && !d.topic.locked) {
+    <section class="topic__reply" aria-labelledby="reply-heading">
+      <h2 id="reply-heading">Reply</h2>
+      <label class="sr" for="reply-body">Your reply (Markdown supported)</label>
+      <textarea
+        id="reply-body"
+        data-testid="reply-body"
+        rows="5"
+        placeholder="Write a reply… (Markdown supported)"
+        [ngModel]="replyBody()"
+        (ngModelChange)="replyBody.set($event)"
+      ></textarea>
+      <hug-forum-sticker-picker (insert)="insertSticker($event)" />
+      @if (replyBody().trim()) {
+        <div class="topic__preview" aria-label="Reply preview">
+          <h3>Preview</h3>
+          <div class="forum-post__body" [innerHTML]="previewHtml()"></div>
+        </div>
+      }
+      <button
+        type="button"
+        class="forum-btn"
+        data-testid="reply-submit"
+        (click)="submitReply()"
+        [disabled]="busy() || !replyBody().trim()"
+      >
+        Post reply
+      </button>
+    </section>
+  } @else if (!canPost()) {
+    <p class="forum-muted" data-testid="reply-gated">
+      You need the forum role to reply. Posting is hidden for your account.
+    </p>
+  }
+}

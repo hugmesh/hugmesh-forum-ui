@@ -1,0 +1,62 @@
+<header class="topics__head">
+  <h1>Topics</h1>
+  @if (canPost()) {
+    <a routerLink="../../create-topic" class="forum-btn" data-testid="topics-new-topic">New topic</a>
+  }
+</header>
+
+<div class="topics__controls">
+  <label class="topics__sort">
+    <span>Sort</span>
+    <select
+      data-testid="topics-sort"
+      [value]="sort()"
+      (change)="onSortChange($any($event.target).value)"
+      aria-label="Sort topics"
+    >
+      <option value="latest">Latest activity</option>
+      <option value="oldest">Oldest first</option>
+      <option value="replies">Most replies</option>
+    </select>
+  </label>
+</div>
+
+@if (loading()) {
+  <p class="forum-muted" role="status">Loading topics…</p>
+} @else if (error()) {
+  <p class="forum-error" role="alert">{{ error() }}</p>
+} @else {
+  <section class="topics__list" role="region" aria-label="Topics in this category">
+    @if (page().items.length === 0) {
+      <p class="forum-muted">No topics in this category yet.</p>
+    } @else {
+      <ul>
+        @for (t of page().items; track trackId($index, t)) {
+          <li class="forum-topic-row">
+            <a [routerLink]="['../../topics', t.id]" class="forum-topic-row__title">
+              {{ t.title }}
+              @if (t.locked) {
+                <span class="forum-topic-row__locked" aria-label="Locked topic">🔒</span>
+              }
+            </a>
+            <span class="forum-topic-row__meta">
+              by
+              <a [routerLink]="['../../profile', t.authorSubject]">{{ t.authorLabel }}</a>
+              · {{ t.replyCount }} replies · {{ t.viewCount }} views
+            </span>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+
+  <nav class="topics__pager" aria-label="Topic pagination">
+    <button type="button" data-testid="topics-prev" (click)="prev()" [disabled]="!hasPrev()" aria-label="Previous page">
+      Previous
+    </button>
+    <span data-testid="topics-page" aria-live="polite">Page {{ page().page }} of {{ totalPages() }}</span>
+    <button type="button" data-testid="topics-next" (click)="next()" [disabled]="!hasNext()" aria-label="Next page">
+      Next
+    </button>
+  </nav>
+}

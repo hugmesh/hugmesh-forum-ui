@@ -1,0 +1,64 @@
+<hug-forum-announcements />
+
+<header class="forum-index__head">
+  <h1>{{ brand.forumName }}</h1>
+  <div class="forum-index__head-actions">
+    @if (loggedIn()) {
+      <button
+        type="button"
+        class="forum-btn forum-btn--ghost"
+        data-testid="vn-profile-toggle"
+        [attr.aria-expanded]="showVnEditor()"
+        aria-controls="vn-editor-panel"
+        (click)="showVnEditor.set(!showVnEditor())"
+      >
+        VN profile
+      </button>
+    }
+    @if (canPost()) {
+      <a routerLink="../create-topic" class="forum-btn" data-testid="forum-new-topic">New topic</a>
+    }
+  </div>
+</header>
+
+@if (loggedIn() && showVnEditor()) {
+  <!-- a11y: Escape anywhere in the panel closes it and returns focus to the
+       toggle (closeVnEditor); saving does the same so focus is never stranded
+       in removed DOM. -->
+  <div id="vn-editor-panel" (keydown.escape)="closeVnEditor()">
+    <hug-forum-vn-profile-editor (saved)="closeVnEditor()" />
+  </div>
+}
+
+<nav class="forum-index__search" aria-label="Forum search">
+  <a routerLink="../search" data-testid="forum-search-link">Search the forum</a>
+</nav>
+
+@if (loading()) {
+  <p class="forum-muted" role="status">Loading categories…</p>
+} @else if (error()) {
+  <p class="forum-error" role="alert">{{ error() }}</p>
+} @else {
+  <section class="forum-categories" role="region" aria-labelledby="forum-categories-heading">
+    <h2 id="forum-categories-heading">Categories</h2>
+    @if (categories().length === 0) {
+      <p class="forum-muted">No categories yet.</p>
+    } @else {
+      <ul class="forum-category-list">
+        @for (c of categories(); track trackId($index, c)) {
+          <li class="forum-category">
+            <a [routerLink]="['../categories', c.id]" class="forum-category__link">
+              <span class="forum-category__name">{{ c.name }}</span>
+              <span class="forum-category__desc">{{ c.description }}</span>
+            </a>
+            <span class="forum-category__stats">
+              <span>{{ c.topicCount }} topics</span>
+              <span aria-hidden="true">·</span>
+              <span>{{ c.postCount }} posts</span>
+            </span>
+          </li>
+        }
+      </ul>
+    }
+  </section>
+}

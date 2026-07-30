@@ -1,0 +1,10 @@
+/node_modules
+/dist
+/out-tsc
+/.angular
+/coverage
+/test-results
+/reports
+*.log
+.DS_Store
+.env

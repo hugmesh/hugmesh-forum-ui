@@ -1,0 +1,216 @@
+@use 'tokens' as t;
+
+/* VN voicebox layer: per-author post skins, the character sprite column,
+ * rendered stickers, and the read-aloud control.
+ *
+ * The skin is applied per post <article> as data-vnskin (allowlisted in
+ * applyVoicebox: classic|glass|retro|neon|paper) plus an optional
+ * --forum-vnbox-accent custom property (strictly re-validated #rrggbb before
+ * setProperty). `classic` is deliberately style-free — an author with no VN
+ * profile (or the classic skin) renders EXACTLY as today.
+ *
+ * .vnbox-preview is the compact swatch the VN profile editor shows next to
+ * each skin radio; it shares the skin selectors so the preview always matches
+ * the real post treatment. */
+
+/* ── layout: sprite column + main content ─────────────────────────────── */
+
+.forum-post--vn {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.forum-post__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.forum-post__sprite {
+  flex: 0 0 auto;
+  /* Size cap: the sprite lives in a FIXED max box (84x160 desktop) with
+   * object-fit so an arbitrarily large uploaded character image can never
+   * inflate the post card or shift the text column. A broken ref is hidden
+   * entirely via the template's (error) handler. */
+  width: 84px;
+  max-height: 160px;
+  object-fit: contain;
+  border-radius: t.$radius-sm;
+}
+
+/* Mobile (below the repo's $bp-sm token): an 84px sprite column + gap inside
+ * a 360px viewport squeezes the text column below readable width and risks
+ * horizontal scroll — collapse the sprite ABOVE the post body and shrink its
+ * box instead. */
+@media (max-width: t.$bp-sm) {
+  .forum-post--vn {
+    flex-direction: column;
+  }
+
+  .forum-post__sprite {
+    width: 64px;
+    max-height: 120px;
+  }
+}
+
+/* ── rendered stickers (transformStickerTokens output) ────────────────── */
+
+img.forum-sticker {
+  display: inline-block;
+  /* Size cap: sticker bodies render at most 5rem tall (and never wider than
+   * the post column) so a giant sticker asset cannot dominate the thread —
+   * the render COUNT is separately capped at 8/post in stickers.ts. */
+  max-width: 100%;
+  max-height: 5rem;
+  vertical-align: middle;
+}
+
+/* ── read-aloud control ───────────────────────────────────────────────── */
+
+.forum-post__speak {
+  margin-block-start: 0.5rem;
+  background: transparent;
+  color: var(--forum-text-muted);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+
+  &:hover {
+    border-color: var(--forum-accent);
+    color: var(--forum-text);
+  }
+
+  &[aria-pressed='true'] {
+    border-color: var(--forum-accent);
+    color: var(--forum-accent-soft);
+  }
+}
+
+/* ── name-plate: the author heading becomes a VN name chip on every
+ *    non-classic skin ─────────────────────────────────────────────────── */
+
+.forum-post[data-vnskin]:not([data-vnskin='classic']) .forum-post__author {
+  display: inline-flex;
+  width: fit-content;
+  /* Overflow: the chip must never grow past the post column even for a
+   * pathological author name (the name itself ellipsizes — see
+   * topic-detail.component.scss). */
+  max-width: 100%;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  /* Contrast (WCAG 1.4.3): the accent is USER-CHOSEN, so the chip tint must
+   * keep 4.5:1 for the name/timestamp text at the WORST case. At 14% even a
+   * #ffffff accent over the darkest surface leaves the chip bg dark enough
+   * for --forum-accent-soft (#b388ff, 4.7:1) and --forum-text-muted (5.6:1);
+   * the previous 26% mix failed both (~3.0:1 / ~3.6:1) for bright accents. */
+  background: color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 55%, transparent);
+}
+
+/* ── editor swatch base ───────────────────────────────────────────────── */
+
+.vnbox-preview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.2rem;
+  height: 2.1rem;
+  border: 1px solid var(--forum-border);
+  border-radius: t.$radius-sm;
+  background: var(--forum-surface);
+  color: var(--forum-text);
+  font-size: 0.85rem;
+}
+
+/* ── glass: translucent blur card ─────────────────────────────────────── */
+
+.forum-post[data-vnskin='glass'],
+.vnbox-preview[data-vnskin='glass'] {
+  background: rgba(t.$charcoal, 0.55);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 50%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ── retro: pixel-border terminal ─────────────────────────────────────── */
+
+.forum-post[data-vnskin='retro'],
+.vnbox-preview[data-vnskin='retro'] {
+  font-family: t.$font-mono;
+  border-radius: 0;
+  background: #060608;
+  border: 4px double var(--forum-vnbox-accent, var(--forum-accent));
+  box-shadow: none;
+}
+
+.forum-post[data-vnskin='retro'] {
+  .forum-post__author {
+    border-radius: 0;
+  }
+
+  .forum-post__body code {
+    background: #101018;
+  }
+}
+
+/* ── neon: glow border ────────────────────────────────────────────────── */
+
+.forum-post[data-vnskin='neon'],
+.vnbox-preview[data-vnskin='neon'] {
+  border: 1px solid var(--forum-vnbox-accent, var(--forum-accent));
+  box-shadow:
+    0 0 8px color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 60%, transparent),
+    0 0 22px color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 30%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--forum-vnbox-accent, var(--forum-accent)) 12%, transparent);
+}
+
+/* ── paper: warm serif card (light surface, dark AA text) ─────────────── */
+
+.forum-post[data-vnskin='paper'],
+.vnbox-preview[data-vnskin='paper'] {
+  background: #f6efdd;
+  color: #2b2418;
+  font-family: t.$font-fancy;
+  border: 1px solid #d8c9a3;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.forum-post[data-vnskin='paper'] {
+  .forum-post__body {
+    color: #2b2418;
+
+    code {
+      background: #efe4c8;
+    }
+
+    blockquote {
+      color: #5c5238;
+      border-left-color: var(--forum-vnbox-accent, #8a6d1d);
+    }
+  }
+
+  .forum-post__author a,
+  a {
+    color: #514114;
+  }
+
+  .forum-post__when,
+  .forum-post__edited {
+    color: #5c5238;
+  }
+
+  .forum-post__speak {
+    color: #5c5238;
+    border-color: #d8c9a3;
+
+    &:hover {
+      color: #2b2418;
+      border-color: #8a6d1d;
+    }
+  }
+}

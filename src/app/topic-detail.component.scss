@@ -1,0 +1,154 @@
+.topic__head h1 {
+  margin-block: 0 0.25rem;
+}
+
+.topic__locked {
+  color: var(--forum-text-muted);
+  font-style: italic;
+}
+
+.topic__mod {
+  margin-block-start: 0.4rem;
+}
+
+.forum-muted {
+  color: var(--forum-text-muted);
+}
+
+.forum-error {
+  color: var(--forum-error);
+}
+
+.topic__posts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--forum-gap);
+  margin-block: 1rem;
+}
+
+.forum-post {
+  background: var(--forum-surface);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  padding: 0.85rem 1rem;
+}
+
+.forum-post__author {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  flex-wrap: wrap;
+
+  a {
+    /* Overflow cap: a pathological displayName (hundreds of chars, no spaces)
+     * must not wrap the VN name-plate over many lines or push the card wider
+     * than the column — ellipsize within the available width instead. */
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+}
+
+.forum-post__when,
+.forum-post__edited {
+  color: var(--forum-text-muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.forum-post__body {
+  color: var(--forum-text);
+
+  :is(p, ul, blockquote) {
+    margin-block: 0.4rem;
+  }
+
+  code {
+    background: var(--forum-bg);
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.3rem;
+  }
+
+  blockquote {
+    border-left: 3px solid var(--forum-accent);
+    padding-left: 0.75rem;
+    color: var(--forum-text-muted);
+  }
+}
+
+.forum-post__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+
+  button {
+    background: transparent;
+    color: var(--forum-text);
+    border: 1px solid var(--forum-border);
+    border-radius: var(--forum-radius);
+    padding: 0.3rem 0.7rem;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--forum-accent);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--forum-bg);
+  color: var(--forum-text);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  padding: 0.6rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.topic__reply {
+  margin-block-start: 1.5rem;
+}
+
+.topic__preview {
+  margin-block: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px dashed var(--forum-border);
+  border-radius: var(--forum-radius);
+}
+
+.forum-btn {
+  display: inline-block;
+  margin-block-start: 0.6rem;
+  padding: 0.5rem 1rem;
+  background: var(--forum-accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--forum-radius);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Ghost variant for the moderator Lock/Unlock control: accent outline on the
+// surface, not a filled accent button (it is chrome, not the primary action).
+.forum-btn--ghost {
+  background: transparent;
+  color: var(--forum-accent-soft);
+  border: 1px solid var(--forum-accent);
+}

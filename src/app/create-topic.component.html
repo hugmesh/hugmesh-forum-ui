@@ -1,0 +1,77 @@
+<h1>New topic</h1>
+
+@if (!canPost()) {
+  <p class="forum-muted" data-testid="create-gated" role="status">
+    You need the forum role to create topics. This form is hidden for your account.
+  </p>
+} @else {
+  <form class="create-form" (ngSubmit)="submit()">
+    <div class="create-field">
+      <label for="topic-category">Category</label>
+      <select
+        id="topic-category"
+        data-testid="create-category"
+        [ngModel]="categoryId()"
+        (ngModelChange)="categoryId.set($event)"
+        name="category"
+        required
+      >
+        @for (c of categories(); track c.id) {
+          <option [ngValue]="c.id">{{ c.name }}</option>
+        }
+      </select>
+    </div>
+
+    <div class="create-field">
+      <label for="topic-title">Title</label>
+      <input
+        id="topic-title"
+        data-testid="create-title"
+        type="text"
+        name="title"
+        [ngModel]="title()"
+        (ngModelChange)="title.set($event)"
+        (blur)="touched.set(true)"
+        [attr.aria-invalid]="titleInvalid()"
+        aria-describedby="title-error"
+        required
+      />
+      <p id="title-error" class="forum-error" role="alert">
+        @if (titleInvalid()) { A title is required. }
+      </p>
+    </div>
+
+    <div class="create-field">
+      <label for="topic-body">Body (Markdown supported)</label>
+      <textarea
+        id="topic-body"
+        data-testid="create-body"
+        name="body"
+        rows="8"
+        [ngModel]="body()"
+        (ngModelChange)="body.set($event)"
+        (blur)="touched.set(true)"
+        [attr.aria-invalid]="bodyInvalid()"
+        aria-describedby="body-error"
+        required
+      ></textarea>
+      <p id="body-error" class="forum-error" role="alert">
+        @if (bodyInvalid()) { A body is required. }
+      </p>
+      <hug-forum-sticker-picker (insert)="insertSticker($event)" />
+    </div>
+
+    @if (body().trim()) {
+      <section class="create-preview" aria-label="Body preview">
+        <h2>Preview</h2>
+        <div class="forum-post__body" [innerHTML]="previewHtml()"></div>
+      </section>
+    }
+
+    <p class="forum-error" role="alert" aria-live="assertive">{{ error() }}</p>
+
+    <button type="submit" class="forum-btn" data-testid="create-submit" [disabled]="busy()">
+      Create topic
+    </button>
+  </form>
+}

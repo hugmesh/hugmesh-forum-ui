@@ -1,0 +1,52 @@
+<h1>Search the forum</h1>
+
+<form class="search-form" role="search" (ngSubmit)="search()">
+  <label class="sr" for="forum-search-input">Search the forum</label>
+  <input
+    id="forum-search-input"
+    data-testid="forum-search-input"
+    type="search"
+    name="q"
+    placeholder="Search topics and posts…"
+    [ngModel]="query()"
+    (ngModelChange)="query.set($event)"
+  />
+  <button type="submit" class="forum-btn" data-testid="forum-search-submit" [disabled]="loading() || !query().trim()">
+    Search
+  </button>
+</form>
+
+@if (loading()) {
+  <p class="forum-muted" role="status">Searching…</p>
+} @else if (searched()) {
+  <p class="forum-muted" aria-live="polite" data-testid="forum-search-count">
+    {{ resultCount() }} result(s) for “{{ query() }}”.
+  </p>
+
+  @if (results(); as r) {
+    @if (r.topics.length) {
+      <section class="search-group" role="region" aria-labelledby="search-topics-heading">
+        <h2 id="search-topics-heading">Topics</h2>
+        <ul>
+          @for (t of r.topics; track t.id) {
+            <li><a [routerLink]="['../topics', t.id]">{{ t.title }}</a></li>
+          }
+        </ul>
+      </section>
+    }
+    @if (r.posts.length) {
+      <section class="search-group" role="region" aria-labelledby="search-posts-heading">
+        <h2 id="search-posts-heading">Posts</h2>
+        <ul>
+          @for (p of r.posts; track p.id) {
+            <li>
+              <a [routerLink]="['../topics', p.topicId]">In topic #{{ p.topicId }}</a>
+              by
+              <a [routerLink]="['../profile', p.authorSubject]">{{ p.authorLabel }}</a>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  }
+}

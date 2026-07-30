@@ -1,0 +1,55 @@
+.search-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-block: 0.75rem 1rem;
+  flex-wrap: wrap;
+
+  input {
+    flex: 1 1 16rem;
+    background: var(--forum-bg);
+    color: var(--forum-text);
+    border: 1px solid var(--forum-border);
+    border-radius: var(--forum-radius);
+    padding: 0.55rem 0.7rem;
+    font-family: inherit;
+  }
+}
+
+.forum-btn {
+  padding: 0.55rem 1.1rem;
+  background: var(--forum-accent);
+  color: #fff;
+  border: 0;
+  border-radius: var(--forum-radius);
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.forum-muted {
+  color: var(--forum-text-muted);
+}
+
+.search-group {
+  margin-block: 1rem;
+
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  li {
+    padding: 0.55rem 0.8rem;
+    background: var(--forum-surface);
+    border: 1px solid var(--forum-border);
+    border-radius: var(--forum-radius);
+  }
+}

@@ -1,0 +1,25 @@
+# hugmesh-deploy.yaml — per-repo deploy descriptor (Phase 6 catalog).
+#
+# Discovered by the catalog ApplicationSet (hugmesh-generator
+# specs/cluster/apps/13-service-catalog.yaml): its scmProvider gitea generator
+# scans the in-cluster Forgejo org for repos carrying THIS file + a `deploy/`
+# kustomize dir and generates one ArgoCD Application (source path: deploy/).
+#
+# DUAL-HOME / SHIPS DARK: the central manifest still lives at
+# hugmesh-generator specs/cluster/manifests/forum-ui/ and remains the
+# authoritative source today. This file + deploy/ are a Forgejo-cutover step:
+# the live GitHub-rooted ArgoCD ignores it, and the (currently unseeded) Forgejo
+# catalog matches nothing, so it changes nothing running. deploy/ is a verbatim
+# copy of the central manifest — keep the two in sync until cutover.
+name: hugmesh-forum-ui               # Application name
+namespace: hugmesh-frontend          # target k8s namespace (existing tier ns)
+image: hugmesh-systems/forum-ui      # image repo (tag pinned in deploy/ kustomize)
+port: 80
+replicas: 1
+# No `route:` block. hugmesh-forum-ui is NOT reached by a dedicated gateway
+# path: it is a module-federation REMOTE served by its own nginx (ClusterIP :80)
+# and stitched into the hugmesh.systems host via loadRemoteModule, mounted at
+# /social/forum (ROLE_FORUM). Its remoteEntry.json is published through the
+# federation manifest/bundles API + the fe-gateway /_fragments|federation surface,
+# not a per-service route DB row. (Its data path — the BFF — is the separate
+# hugmesh-forum-bff-api descriptor's /bff/forum/** fe-gateway route.)

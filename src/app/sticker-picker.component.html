@@ -1,0 +1,31 @@
+@if (stickers()?.length) {
+  <div class="sticker-picker">
+    <button
+      type="button"
+      class="sticker-picker__toggle"
+      data-testid="sticker-toggle"
+      [attr.aria-expanded]="open()"
+      (click)="open.set(!open())"
+    >
+      Insert sticker
+    </button>
+    @if (open()) {
+      <ul class="sticker-picker__panel" data-testid="sticker-panel" aria-label="Your stickers" (keydown)="onPanelKeydown($event)">
+        @for (s of stickers(); track s.slug) {
+          <li>
+            <button
+              type="button"
+              class="sticker-picker__item"
+              [attr.data-testid]="'sticker-insert-' + s.slug"
+              [attr.aria-label]="'Insert sticker ' + s.label"
+              (click)="pick(s.slug)"
+            >
+              <img [src]="bodyUrl(s.slug)" alt="" loading="lazy" decoding="async" (error)="hideBrokenThumb($event)" />
+              <span class="sticker-picker__label">{{ s.label }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+}

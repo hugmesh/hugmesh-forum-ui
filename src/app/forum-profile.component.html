@@ -1,0 +1,13 @@
+<section class="forum-profile" aria-labelledby="forum-profile-heading">
+  <h1 id="forum-profile-heading">Profile</h1>
+
+  @if (loading()) {
+    <p class="forum-muted" role="status">Loading profile…</p>
+  } @else if (loadError()) {
+    <p class="forum-error" role="alert" data-testid="forum-profile-error">{{ loadError() }}</p>
+  } @else if (profileComponent(); as cmp) {
+    <div class="forum-profile__fragment" data-testid="forum-profile-fragment">
+      <ng-container *ngComponentOutlet="cmp; inputs: profileInputs()" />
+    </div>
+  }
+</section>

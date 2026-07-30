@@ -1,0 +1,122 @@
+<section class="vn-editor" data-testid="vn-editor" aria-labelledby="vn-editor-heading">
+  <h2 id="vn-editor-heading">VN profile</h2>
+
+  @if (loading()) {
+    <p class="forum-muted" role="status">Loading your VN profile…</p>
+  } @else {
+    <form (ngSubmit)="save()">
+      @if (stickers()?.length) {
+        <fieldset class="vn-editor__field">
+          <legend>Character sticker</legend>
+          <div class="vn-editor__stickers">
+            <label class="vn-editor__sticker">
+              <input
+                type="radio"
+                name="vn-sticker"
+                data-testid="vn-editor-sticker-none"
+                [checked]="stickerSlug() === null"
+                (change)="stickerSlug.set(null)"
+              />
+              <span class="vn-editor__sticker-none" aria-hidden="true">×</span>
+              <span>None</span>
+            </label>
+            @for (s of stickers(); track s.slug) {
+              <label class="vn-editor__sticker">
+                <input
+                  type="radio"
+                  name="vn-sticker"
+                  [attr.data-testid]="'vn-editor-sticker-' + s.slug"
+                  [checked]="stickerSlug() === s.slug"
+                  (change)="stickerSlug.set(s.slug)"
+                />
+                <img [src]="bodyUrl(s.slug)" alt="" loading="lazy" decoding="async" (error)="hideBrokenThumb($event)" />
+                <span>{{ s.label }}</span>
+              </label>
+            }
+          </div>
+        </fieldset>
+      }
+
+      <div class="vn-editor__field vn-editor__row">
+        <input
+          id="vn-use-avatar"
+          type="checkbox"
+          data-testid="vn-editor-avatar"
+          [ngModel]="useAvatar()"
+          (ngModelChange)="useAvatar.set($event)"
+          name="useAvatar"
+        />
+        <label for="vn-use-avatar">Use my character avatar as the post sprite</label>
+      </div>
+
+      <fieldset class="vn-editor__field">
+        <legend>Voicebox skin</legend>
+        <div class="vn-editor__skins">
+          @for (s of skins; track s) {
+            <label class="vn-editor__skin">
+              <input
+                type="radio"
+                name="vn-skin"
+                [attr.data-testid]="'vn-editor-skin-' + s"
+                [checked]="skin() === s"
+                (change)="skin.set(s)"
+              />
+              <span class="vnbox-preview" [attr.data-vnskin]="s" aria-hidden="true">Aa</span>
+              <span>{{ s }}</span>
+            </label>
+          }
+        </div>
+      </fieldset>
+
+      <div class="vn-editor__field vn-editor__row">
+        <input
+          id="vn-accent-enabled"
+          type="checkbox"
+          data-testid="vn-editor-accent-enabled"
+          [ngModel]="accentEnabled()"
+          (ngModelChange)="accentEnabled.set($event)"
+          name="accentEnabled"
+        />
+        <label for="vn-accent-enabled">Custom accent colour</label>
+        @if (accentEnabled()) {
+          <input
+            id="vn-accent"
+            type="color"
+            data-testid="vn-editor-accent"
+            aria-label="Voicebox accent colour"
+            [ngModel]="accent()"
+            (ngModelChange)="accent.set($event)"
+            name="accent"
+          />
+        }
+      </div>
+
+      <div class="vn-editor__field">
+        <label for="vn-voice">Read-aloud voice style</label>
+        <select
+          id="vn-voice"
+          data-testid="vn-editor-voice"
+          [ngModel]="voiceStyle()"
+          (ngModelChange)="voiceStyle.set($event)"
+          name="voiceStyle"
+        >
+          <option value="">none</option>
+          @for (v of voices; track v) {
+            <option [value]="v">{{ v }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="vn-editor__outcome" role="status" aria-live="polite">
+        @if (status()) {
+          <p>{{ status() }}</p>
+        }
+      </div>
+      <p class="forum-error" role="alert" aria-live="assertive">{{ error() }}</p>
+
+      <button type="submit" class="forum-btn" data-testid="vn-editor-save" [disabled]="busy() || !accentValid()">
+        Save VN profile
+      </button>
+    </form>
+  }
+</section>
