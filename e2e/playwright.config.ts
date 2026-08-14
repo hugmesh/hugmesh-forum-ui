@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 import { defineBddConfig } from 'playwright-bdd';
 
 // Copied from the proven hugmesh.games/e2e + hugmesh-admin-ui/e2e pattern.
-// The forum-ui is a native-federation REMOTE mounted by the hugmesh.systems
+// The forum-ui is a native-federation REMOTE mounted by the hugmesh.net
 // host at /social/forum (see src/app/forum.routes.ts), so the e2e baseURL points
 // at the host front door — the federated remote is not browsable in isolation in
 // a real stack. Override with E2E_BASE_URL.

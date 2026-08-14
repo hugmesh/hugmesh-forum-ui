@@ -13,7 +13,7 @@ import { RouterStateSnapshot, TitleStrategy } from '@angular/router';
  * strategy replaces it on the first navigation of the dev shell.
  *
  * SCOPE: this is registered ONLY in the dev-shell `bootstrap.ts`. In production
- * the hugmesh.systems host federates `./routes` (FORUM_ROUTES) and owns the
+ * the hugmesh.net host federates `./routes` (FORUM_ROUTES) and owns the
  * document title with its OWN strategy; FORUM_ROUTES deliberately carry no
  * `title`, and the dev-shell wrapper (app.routes.ts) attaches the surface names
  * — so this strategy never runs inside the host and cannot override host chrome.

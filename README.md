@@ -145,7 +145,7 @@ otherwise-blocked board.
 ```mermaid
 flowchart TD
     subgraph browser["Browser"]
-        HostShell["hugmesh.systems host shell"]
+        HostShell["hugmesh.net host shell"]
         ForumRemote["forum-ui remote (this repo)<br/>FORUM_ROUTES"]
         UserRemote["user remote<br/>federated profile fragment"]
         HostShell -->|"loadRemoteModule('forum','./routes')"| ForumRemote

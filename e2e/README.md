@@ -1,7 +1,7 @@
 # hugmesh-forum-ui — e2e (Playwright + playwright-bdd)
 
 Gherkin/BDD end-to-end harness for the **forum-ui native-federation remote**
-(phpBB-backed forum, mounted by the hugmesh.systems host at `/social/forum`).
+(phpBB-backed forum, mounted by the hugmesh.net host at `/social/forum`).
 Copied from the proven `hugmesh-games/e2e` + `hugmesh-admin-ui/e2e`
 pattern. **PURE TEST CODE** — it does not touch the Angular/karma unit build or
 any app code; everything lives under this isolated `e2e/` workspace.

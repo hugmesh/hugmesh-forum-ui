@@ -18,7 +18,7 @@ port: 80
 replicas: 1
 # No `route:` block. hugmesh-forum-ui is NOT reached by a dedicated gateway
 # path: it is a module-federation REMOTE served by its own nginx (ClusterIP :80)
-# and stitched into the hugmesh.systems host via loadRemoteModule, mounted at
+# and stitched into the hugmesh.net host via loadRemoteModule, mounted at
 # /social/forum (ROLE_FORUM). Its remoteEntry.json is published through the
 # federation manifest/bundles API + the fe-gateway /_fragments|federation surface,
 # not a per-service route DB row. (Its data path — the BFF — is the separate
