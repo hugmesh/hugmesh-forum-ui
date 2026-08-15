@@ -73,6 +73,12 @@ describe('TopicDetailComponent', () => {
     ]);
     (forum as unknown as { canPost: typeof canPost }).canPost = canPost;
     (forum as unknown as { canModerate: typeof canModerate }).canModerate = canModerate;
+    // BOTH role signals are describe-scoped (the spy service holds a reference
+    // to them), so both must be reset here: a spec that leaves canPost=false
+    // otherwise leaks a different view tree — and therefore a different
+    // change-detection schedule — into whichever spec Jasmine's random order
+    // runs next.
+    canPost.set(true);
     canModerate.set(false);
     forum.getTopic.and.resolveTo(detail());
     forum.ownsPost.and.returnValue(false);
@@ -105,13 +111,19 @@ describe('TopicDetailComponent', () => {
   // Two stability rounds: the VN profile lookup resolves one microtask level
   // below getTopic (load → loadProfiles → lookup), which the first
   // whenStable() does not always settle.
-  // TODO: two rounds is still not fully reliable — repeated offline
-  // ChromeHeadless runs of this file (2026-07-16) show an intermittent
-  // (roughly 1-in-3 runs) failure in one of the VN/sticker specs below
-  // (skin+accent, sticker-token render, or sticker-survives-CD), each time an
-  // assertion that reads DOM state this promise chain writes. Needs either a
-  // third round, a `whenStable()` loop until quiescent, or synchronous test
-  // doubles for `vn.lookup`/`stickers.listOwn` instead of guessing a round count.
+  //
+  // The 1-in-3 flake logged here on 2026-07-16 was NOT a missing round — it
+  // was diagnosed on 2026-08-14 and fixed in the component. The rounds settle
+  // the promises fine (profiles() is populated before the last
+  // detectChanges); what was missing was a reason for Angular to check THIS
+  // component's view afterwards. `profiles` is read by ngAfterViewChecked and
+  // by the @for block, never by the component's own template, so a late set()
+  // refreshed only the embedded view and the skin/sticker DOM pass never ran.
+  // Whether that mattered depended on the view tree: with the reply composer
+  // present, the sticker picker's own async init happened to force the extra
+  // check — so a leaked canPost=false (see beforeEach) flipped these specs to
+  // red. topic-detail.component.ts now calls markForCheck() on those async
+  // writes; see 'applies a VN profile that arrives AFTER the posts rendered'.
   async function render() {
     fixture.detectChanges();
     await fixture.whenStable();
@@ -299,6 +311,32 @@ describe('TopicDetailComponent', () => {
     expect(sprite.getAttribute('alt')).toBe('alice character');
   });
 
+  // Regression for the flake root cause: the lookup is FAIL-SOFT and resolves
+  // after the posts are already on screen. `profiles` is consumed by
+  // ngAfterViewChecked (applyVoicebox) and by the @for block, but never by the
+  // component's own template — so unless the component asks for a re-check,
+  // Angular refreshes only the embedded view and the skin/accent is never
+  // written. One change-detection pass after the profile lands must apply it.
+  it('applies a VN profile that arrives AFTER the posts rendered', async () => {
+    let release!: (found: Record<string, VnProfile>) => void;
+    const pending = new Promise<Record<string, VnProfile>>((resolve) => (release = resolve));
+    vn.lookup.and.returnValue(pending);
+
+    await render();
+    const article = el().querySelector<HTMLElement>('article.forum-post')!;
+    // Nothing resolved yet: the post renders exactly as an unprofiled one.
+    expect(article.hasAttribute('data-vnskin')).toBeFalse();
+
+    release({ 'google:alice@gmail.com': vnProfile({ voiceboxStyle: 'glass', voiceboxAccent: '#ff00aa' }) });
+    await pending;
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Same <article> element (trackBy kept it) — now skinned.
+    expect(article.getAttribute('data-vnskin')).toBe('glass');
+    expect(article.style.getPropertyValue('--forum-vnbox-accent')).toBe('#ff00aa');
+  });
+
   it('hides a sprite whose image fails to load (no broken-image glyph)', async () => {
     vn.lookup.and.resolveTo({
       'google:alice@gmail.com': vnProfile({ characterImgRef: '/bff/user/character/avatar' }),
@@ -363,6 +401,21 @@ describe('TopicDetailComponent', () => {
     fixture.detectChanges();
     fixture.detectChanges();
     expect(el().querySelectorAll('.forum-post__body img.forum-sticker').length).toBe(1);
+  });
+
+  // Fail-soft, and the second half of the same regression: the post-render
+  // sticker pass is driven by the TOPIC load, so it must not depend on the
+  // (independent, best-effort) VN lookup ever settling. Read by a gated
+  // reader, which is also the leanest view tree there is — no composer, no
+  // sticker picker, so the topic load itself is the only thing that can
+  // schedule the check that renders the stickers.
+  it('renders sticker tokens for a gated reader while the VN lookup hangs', async () => {
+    canPost.set(false);
+    forum.getTopic.and.resolveTo(detail({ posts: [post({ bodyHtml: '<p>gg :snap-sticker:wave: wp</p>' })] }));
+    vn.lookup.and.returnValue(new Promise<Record<string, VnProfile>>(() => {}));
+    await render();
+    expect(el().querySelector('[data-testid="reply-body"]')).toBeNull();
+    expect(el().querySelector<HTMLImageElement>('.forum-post__body img.forum-sticker')).not.toBeNull();
   });
 
   it('hides the sticker picker in the reply composer when the endpoint is unavailable', async () => {

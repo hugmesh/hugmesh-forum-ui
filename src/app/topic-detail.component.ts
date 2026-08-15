@@ -1,4 +1,13 @@
-import { AfterViewChecked, Component, ElementRef, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import {
+  AfterViewChecked,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  OnDestroy,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -73,6 +82,9 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
   private readonly sanitizer = inject(DomSanitizer);
   private readonly vn = inject(VnProfileService);
   private readonly host = inject(ElementRef<HTMLElement>);
+  /** See {@link ngAfterViewChecked}: state that only the post-render DOM pass
+   *  consumes must explicitly request a re-check of THIS view when it lands. */
+  private readonly cdr = inject(ChangeDetectorRef);
 
   readonly detail = signal<TopicDetail | null>(null);
   readonly loading = signal(false);
@@ -132,6 +144,19 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
    * {@link applyVoicebox}), and (b) transform sticker tokens inside the
    * rendered post bodies and the reply preview. Both operations are
    * idempotent, so re-running per change-detection pass is safe.
+   *
+   * IMPORTANT — this hook runs only when Angular checks THIS component view.
+   * The DOM it writes is driven by {@link profiles} and by the rendered post
+   * bodies, yet `profiles` is read only from here and from inside the `@for`
+   * block (via {@link spriteUrl}) — never from this component's own template.
+   * So when that state is set from a resolved promise, Angular's fine-grained
+   * change detection refreshes just the embedded `@for` view that reads it and
+   * this hook never runs: the voicebox skin/accent stays unapplied and sticker
+   * tokens stay raw text. Every ASYNC writer of that state therefore pairs its
+   * `set()` with `ChangeDetectorRef.markForCheck()` (see {@link load} and
+   * {@link loadProfiles}); the event-driven writers (reply/edit/delete/lock)
+   * need nothing, because the listener that triggered them already marks the
+   * view dirty.
    */
   ngAfterViewChecked(): void {
     const root = this.host.nativeElement as HTMLElement;
@@ -346,6 +371,9 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
     try {
       const d = await this.forum.getTopic(id);
       this.detail.set(d);
+      // The freshly rendered post bodies need the post-render sticker pass;
+      // ask for a check of THIS view, not just of the @for that reads `detail`.
+      this.cdr.markForCheck();
       this.error.set('');
       void this.loadProfiles(d.posts);
     } catch {
@@ -365,6 +393,9 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
   private async loadProfiles(posts: readonly ForumPost[]): Promise<void> {
     const found = await this.vn.lookup(posts.map((p) => p.authorSubject));
     this.profiles.set({ ...this.profiles(), ...found });
+    // `profiles` feeds ngAfterViewChecked (applyVoicebox) but not this view's
+    // own template, so nothing else would schedule the check that applies it.
+    this.cdr.markForCheck();
   }
 
   /**
