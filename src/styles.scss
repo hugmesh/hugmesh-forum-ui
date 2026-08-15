@@ -39,6 +39,15 @@
   --forum-text:         var(--hug-text);
   --forum-text-muted:   var(--hug-text-muted);
   --forum-accent:       var(--hug-accent);
+  /* Text ON a filled --forum-accent. The accent is brand/user-chosen, so the
+   * literal #fff the buttons used to hardcode is only legible for a DARK
+   * accent: across the shipped theme presets it fails WCAG AA on 24 of 38 —
+   * 1.16:1 on the nonbinary flag's #fcf434, 1.25:1 on high-contrast's
+   * #00ffff, i.e. an invisible label on a filled button. --hug-accent-on is
+   * the platform's luminance-picked pure #000/#fff twin (AA for any sRGB
+   * accent). The #ffffff fallback is deliberate: an un-themed build that
+   * never emits --hug-accent-on renders byte-identically to today. */
+  --forum-accent-on:    var(--hug-accent-on, #ffffff);
   --forum-accent-soft:  var(--hug-accent-soft);
   --forum-success:      var(--hug-success);
   --forum-error:        var(--hug-error);

@@ -21,6 +21,11 @@ export type ForumTokenName =
   | 'text'
   | 'text-muted'
   | 'accent'
+  /** Text drawn ON a filled accent. A Model B host that overrides `accent`
+   *  MUST be able to override this too: --forum-accent-on otherwise resolves
+   *  to the PLATFORM accent's luminance pick, which can be the wrong pole for
+   *  the brand's accent and reintroduce the unreadable-label bug. */
+  | 'accent-on'
   | 'accent-soft'
   | 'success'
   | 'error';

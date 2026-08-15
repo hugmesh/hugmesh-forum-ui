@@ -71,7 +71,9 @@
   align-self: flex-start;
   padding: 0.55rem 1.1rem;
   background: var(--forum-accent);
-  color: #fff;
+  // Filled accent: the label must follow the accent's luminance, not a fixed
+  // #fff (see --forum-accent-on in styles.scss). Literal kept as the fallback.
+  color: var(--forum-accent-on, #fff);
   border: 0;
   border-radius: var(--forum-radius);
   font-weight: 600;

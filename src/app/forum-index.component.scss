@@ -38,7 +38,9 @@
   display: inline-block;
   padding: 0.5rem 1rem;
   background: var(--forum-accent);
-  color: #fff;
+  // Filled accent: the label must follow the accent's luminance, not a fixed
+  // #fff (see --forum-accent-on in styles.scss). Literal kept as the fallback.
+  color: var(--forum-accent-on, #fff);
   border-radius: var(--forum-radius);
   text-decoration: none;
   font-weight: 600;

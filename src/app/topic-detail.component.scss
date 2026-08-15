@@ -133,7 +133,9 @@ textarea {
   margin-block-start: 0.6rem;
   padding: 0.5rem 1rem;
   background: var(--forum-accent);
-  color: #fff;
+  // Filled accent: the label must follow the accent's luminance, not a fixed
+  // #fff (see --forum-accent-on in styles.scss). Literal kept as the fallback.
+  color: var(--forum-accent-on, #fff);
   border: 0;
   border-radius: var(--forum-radius);
   font-weight: 600;
