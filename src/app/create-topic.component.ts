@@ -1,7 +1,7 @@
 import { AfterViewChecked, Component, ElementRef, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 import { ForumService, ForumCategory } from './forum.service';
@@ -34,6 +34,10 @@ import { StickerPickerComponent } from './sticker-picker.component';
 export class CreateTopicComponent implements OnInit, AfterViewChecked {
   private readonly forum = inject(ForumService);
   private readonly router = inject(Router);
+  /** THIS route (`<mount>/create-topic`) — what `../topics` is relative TO.
+   *  See {@link submit}: a relative `Router.navigate` without `relativeTo`
+   *  resolves against the router ROOT, not the current route. */
+  private readonly route = inject(ActivatedRoute);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly host = inject(ElementRef<HTMLElement>);
 
@@ -159,7 +163,18 @@ export class CreateTopicComponent implements OnInit, AfterViewChecked {
         body: this.body().trim(),
       });
       // Navigate to the newly created topic so the author can see their post.
-      void this.router.navigate(['../topics', topic.id]);
+      //
+      // `relativeTo` is LOAD-BEARING, not decoration. `Router.navigate` — unlike
+      // a `routerLink` in a template, which defaults to the component's own
+      // ActivatedRoute — resolves its command list against the router ROOT when
+      // no `relativeTo` is given. So `['../topics', id]` walked up from `/`
+      // (where `..` is a no-op) and produced `/topics/<id>`: correct-looking
+      // standalone at the origin root, and off the remote entirely under the
+      // host shell, where this remote is mounted at /social/forum and the
+      // injected Router is the SHELL's. Every `../` link in this repo's
+      // TEMPLATES (forum-index, topics-list, forum-search, topic-detail) was
+      // already right for exactly that reason; this one call site was not.
+      void this.router.navigate(['../topics', topic.id], { relativeTo: this.route });
     } catch {
       this.error.set('Could not create the topic. Please try again.');
     } finally {

@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter, Router } from '@angular/router';
+import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { signal } from '@angular/core';
 
 import { CreateTopicComponent } from './create-topic.component';
@@ -93,7 +93,16 @@ describe('CreateTopicComponent', () => {
     component.body.set('Some **body**');
     await component.submit();
     expect(forum.createTopic).toHaveBeenCalledWith(jasmine.objectContaining({ categoryId: 1, title: 'Hi' }));
-    expect(nav).toHaveBeenCalledWith(['../topics', 77]);
+    // ROUTE-RELATIVE: `Router.navigate` resolves against the router ROOT unless
+    // `relativeTo` is given, so the bare `['../topics', id]` landed on
+    // `/topics/77` — off this remote's mount under the host shell. The
+    // `relativeTo` argument is the whole fix; asserting only the command list
+    // is what let the defect through.
+    expect(nav).toHaveBeenCalledWith(
+      ['../topics', 77], jasmine.objectContaining({ relativeTo: jasmine.anything() }));
+    const [, extras] = nav.calls.mostRecent().args as [unknown[], { relativeTo?: unknown }];
+    expect(extras?.relativeTo).withContext('relativeTo must be the CURRENT route').toBe(
+      TestBed.inject(ActivatedRoute));
   });
 
   // ── stickers in the composer ────────────────────────────────────────────────
