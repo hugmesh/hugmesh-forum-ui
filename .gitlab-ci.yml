@@ -9,7 +9,7 @@
 # hidden `.pentest-sca` / `.pentest-dast-baseline` jobs that the thin jobs below
 # `extends:`. See memory hugmesh-pentest-standard.
 include:
-  - project: 'HugMesh/hugmesh-generator'
+  - project: 'hugmesh/hugmesh-generator'
     ref: main
     file: '/tests/pentest/ci/pentest-stage.gitlab-ci.yml'
 
