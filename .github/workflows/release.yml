@@ -3,7 +3,7 @@ name: Release
 # Manual-only. This must stay fully inert (no push/tag trigger) until a human
 # deliberately enables it from the Actions tab. Mirrors this repo's existing
 # .gitlab-ci.yml `build:image` job (container image build/push), retargeted at
-# GHCR now that the repo lives under the hugmesh-net GitHub org.
+# GHCR now that the repo lives under the hugmesh GitHub org.
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +13,7 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: ghcr.io/hugmesh-net/hugmesh-forum-ui
+  IMAGE_NAME: ghcr.io/hugmesh/hugmesh-forum-ui
 
 jobs:
   build-and-push:

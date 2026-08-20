@@ -9,7 +9,7 @@
 # Centralized DAST harness (run-pentest.sh) source of truth. Override either var
 # to point at a local checkout / a different ref.
 PENTEST_HARNESS_DIR ?= ../hugmesh-generator/tests/pentest
-PENTEST_HARNESS_REPO ?= https://github.com/hugmesh-net/hugmesh-generator.git
+PENTEST_HARNESS_REPO ?= https://github.com/hugmesh/hugmesh-generator.git
 
 .PHONY: pentest pentest-sca pentest-dast
 

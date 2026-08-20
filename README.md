@@ -1,24 +1,24 @@
 # hugmesh-forum-ui
 
-The **Forum** Angular micro-frontend for the [HugMesh](https://github.com/hugmesh-net)
+The **Forum** Angular micro-frontend for the [HugMesh](https://github.com/hugmesh)
 platform — a native-federation **remote** named **`forum`**, loaded at runtime by the
-[hugmesh-host-shell](https://github.com/hugmesh-net/hugmesh-host-shell).
+[hugmesh-host-shell](https://github.com/hugmesh/hugmesh-host-shell).
 
 It provides the entire user-facing forum experience on top of a **headless phpBB**
 backend. phpBB itself stays entirely server-side, reached only through
-[hugmesh-forum-bff-api](https://github.com/hugmesh-net/hugmesh-forum-bff-api):
+[hugmesh-forum-bff-api](https://github.com/hugmesh/hugmesh-forum-bff-api):
 no phpBB board front-end, admin control panel, native login page, or CSS ever
 reaches the browser. This remote is the single source of truth for what forum
 users see — the browser never talks to phpBB directly.
 
 It is structurally similar to its sibling remote
-[hugmesh-mastodon-ui](https://github.com/hugmesh-net/hugmesh-mastodon-ui)
+[hugmesh-mastodon-ui](https://github.com/hugmesh/hugmesh-mastodon-ui)
 (the same `federation-base.js`, the same native-federation application builder,
 the same Dockerfile/nginx/accessibility baseline), and shares its `SessionService`
-implementation with [hugmesh-mod-ui](https://github.com/hugmesh-net/hugmesh-mod-ui)
+implementation with [hugmesh-mod-ui](https://github.com/hugmesh/hugmesh-mod-ui)
 so role signals stay consistent across the platform. Other social surfaces ship
 as their own remotes — matrix, mastodon, login, admin, mod, user — each in its
-own repository under the [hugmesh-net](https://github.com/hugmesh-net) organization.
+own repository under the [hugmesh](https://github.com/hugmesh) organization.
 
 ## Contents
 
@@ -100,7 +100,7 @@ own repository under the [hugmesh-net](https://github.com/hugmesh-net) organizat
 
 Login, session, and account handling live outside this remote entirely: they
 are owned by the platform's shared auth stack
-([hugmesh-auth-core](https://github.com/hugmesh-net/hugmesh-auth-core) plus
+([hugmesh-auth-core](https://github.com/hugmesh/hugmesh-auth-core) plus
 the `user-bff`/`admin-bff` services), and this UI only consumes the resulting
 shared session. The forum-targeted announcements endpoint
 (`/bff/announcements/forum`) is served by the admin BFF and is unrelated to
@@ -484,17 +484,17 @@ manifests (`Deployment`, `HorizontalPodAutoscaler`, Kustomize base).
 This remote is one piece of the larger HugMesh platform. Repositories you'll
 likely want alongside this one:
 
-- [hugmesh-host-shell](https://github.com/hugmesh-net/hugmesh-host-shell) —
+- [hugmesh-host-shell](https://github.com/hugmesh/hugmesh-host-shell) —
   the host application that federates this and every other remote.
-- [hugmesh-forum-bff-api](https://github.com/hugmesh-net/hugmesh-forum-bff-api) —
+- [hugmesh-forum-bff-api](https://github.com/hugmesh/hugmesh-forum-bff-api) —
   the backend-for-frontend that fronts headless phpBB for this UI.
-- [hugmesh-mastodon-ui](https://github.com/hugmesh-net/hugmesh-mastodon-ui) and
-  [hugmesh-mod-ui](https://github.com/hugmesh-net/hugmesh-mod-ui) — sibling
+- [hugmesh-mastodon-ui](https://github.com/hugmesh/hugmesh-mastodon-ui) and
+  [hugmesh-mod-ui](https://github.com/hugmesh/hugmesh-mod-ui) — sibling
   remotes this repo is structurally derived from.
-- [hugmesh-auth-core](https://github.com/hugmesh-net/hugmesh-auth-core) — the
+- [hugmesh-auth-core](https://github.com/hugmesh/hugmesh-auth-core) — the
   shared login/session/account logic consumed (not owned) by this remote.
 - The full set of remotes and services lives under the
-  [hugmesh-net](https://github.com/hugmesh-net) GitHub organization.
+  [hugmesh](https://github.com/hugmesh) GitHub organization.
 
 ## Contributing
 
