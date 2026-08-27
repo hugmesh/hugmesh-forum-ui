@@ -70,5 +70,13 @@ E2E_FORUM_USER_PASSWORD=… E2E_ADMIN_PASSWORD=… \
 npm run bdd                # bddgen && playwright test
 ```
 
+Per-user `E2E_<ROLE>_PASSWORD` / shared `E2E_PASSWORD` env vars above are
+optional overrides, not requirements: `tests/helpers/roles.ts` (`passwordFor()`)
+falls back to the run-state `.e2e-credentials` file written by
+hugmesh-generator's `make stack-seed` (`$E2E_CREDENTIALS_FILE`, or a
+`.e2e-credentials` found by walking up from cwd). There is no built-in literal
+password — if nothing resolves, the suite throws naming `make stack-seed`
+rather than silently authenticating with a guessable default.
+
 Per-step PNGs are attached to the HTML report (`results/html`) via the
 `AfterStep` hook in `features/support/fixtures.ts`; trace/video retain on failure.
