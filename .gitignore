@@ -8,3 +8,4 @@
 *.log
 .DS_Store
 .env
+/.e2e-credentials
