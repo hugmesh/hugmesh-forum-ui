@@ -69,10 +69,11 @@ own repository under the [hugmesh](https://github.com/hugmesh) organization.
   [Deployment](#deployment).
 - A Playwright + Gherkin (BDD) end-to-end harness lives under `e2e/`, alongside
   the Karma/JUnit unit-test reporter used in CI. The Karma suite (170+ specs)
-  passes with `npm test`, and `ng build forum` builds clean. A small number of
-  the VN specs in `topic-detail.component.spec.ts` are known to be
-  intermittently flaky under repeated local runs — see the `TODO` at that
-  file's `render()` helper.
+  passes with `npm test`, and `ng build forum` builds clean. A 1-in-3 flake in
+  the VN specs in `topic-detail.component.spec.ts` was diagnosed and fixed on
+  2026-08-14 — `topic-detail.component.ts` now calls `markForCheck()` on the
+  async VN/topic state writes; see the `render()` helper's comment for the
+  full timeline.
 - **VN reading mode** — an optional visual-novel-style presentation for posts
   (per-author character sprite, a "voicebox" dialogue skin, inline stickers,
   browser read-aloud) is fully implemented. See [VN reading
