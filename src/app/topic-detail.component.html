@@ -42,7 +42,7 @@
         <div class="forum-post__main">
           <h3 class="forum-post__author">
             <a [routerLink]="['../../profile', p.authorSubject]">{{ p.authorLabel }}</a>
-            <span class="forum-post__when">{{ p.createdAt }}</span>
+            <time class="forum-post__when" [attr.datetime]="p.createdAt">{{ p.createdAt | date: 'medium' }}</time>
             @if (p.editedAt) {
               <span class="forum-post__edited">(edited)</span>
             }
