@@ -6,6 +6,11 @@ import { signal } from '@angular/core';
 import { MAX_SPEECH_CHARS, TopicDetailComponent, speechAccess } from './topic-detail.component';
 import { ForumService, ForumPost, TopicDetail } from './forum.service';
 import { VnProfile, VnProfileService } from './vn-profile.service';
+import { CHARACTER_AVATAR_HANDLE_PATH, characterAvatarBodyUrl } from './character-avatar';
+
+/** A RESOLVED character-avatar sprite ref — what the VN editor stores now that
+ *  hugmesh-user-bff-api serves the pixels per owner handle. */
+const AVATAR_URL = characterAvatarBodyUrl('3f2504e0-4f89-41d3-9a0c-0305e82c3301')!;
 import { StickerService } from './sticker.service';
 
 function post(over: Partial<ForumPost> = {}): ForumPost {
@@ -298,7 +303,7 @@ describe('TopicDetailComponent', () => {
       'google:alice@gmail.com': vnProfile({
         voiceboxStyle: 'glass',
         voiceboxAccent: '#ff00aa',
-        characterImgRef: '/bff/user/character/avatar',
+        characterImgRef: AVATAR_URL,
       }),
     });
     await render();
@@ -306,7 +311,7 @@ describe('TopicDetailComponent', () => {
     expect(article.getAttribute('data-vnskin')).toBe('glass');
     expect(article.style.getPropertyValue('--forum-vnbox-accent')).toBe('#ff00aa');
     const sprite = article.querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
-    expect(sprite.getAttribute('src')).toBe('/bff/user/character/avatar');
+    expect(sprite.getAttribute('src')).toBe(AVATAR_URL);
     // a11y: the sprite names its author instead of being decorative.
     expect(sprite.getAttribute('alt')).toBe('alice character');
   });
@@ -339,7 +344,7 @@ describe('TopicDetailComponent', () => {
 
   it('hides a sprite whose image fails to load (no broken-image glyph)', async () => {
     vn.lookup.and.resolveTo({
-      'google:alice@gmail.com': vnProfile({ characterImgRef: '/bff/user/character/avatar' }),
+      'google:alice@gmail.com': vnProfile({ characterImgRef: AVATAR_URL }),
     });
     await render();
     const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
@@ -364,6 +369,27 @@ describe('TopicDetailComponent', () => {
     await render();
     const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
     expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
+  });
+
+  // hugmesh-forum-bff-api issue #3: profiles saved before the avatar serve route
+  // existed hold the bare handle path, which names no owner and therefore can
+  // never be THIS author's pixels (it answers with JSON today). It must not be
+  // put in an <img src> — fall back to the sticker instead of a broken image.
+  it('ignores the LEGACY bare avatar path; falls back to the sticker', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({ characterImgRef: CHARACTER_AVATAR_HANDLE_PATH, stickerSlug: 'wave' }),
+    });
+    await render();
+    const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
+    expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
+  });
+
+  it('renders NO sprite for a LEGACY bare avatar path with no sticker to fall back to', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({ characterImgRef: CHARACTER_AVATAR_HANDLE_PATH }),
+    });
+    await render();
+    expect(el().querySelector('[data-testid="post-sprite"]')).toBeNull();
   });
 
   it('rejects a bad accent hex at the article boundary (attr set, var NOT set)', async () => {

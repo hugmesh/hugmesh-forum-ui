@@ -82,6 +82,15 @@
   }
 }
 
+// Small preview of the avatar that "use my character avatar" will store — the
+// same 3rem box as a sticker swatch, so the two sprite choices read alike.
+.vn-editor__avatar {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  border-radius: var(--forum-radius);
+}
+
 .vn-editor__sticker-none {
   display: inline-flex;
   align-items: center;

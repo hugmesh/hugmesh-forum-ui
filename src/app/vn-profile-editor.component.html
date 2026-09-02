@@ -37,17 +37,28 @@
         </fieldset>
       }
 
-      <div class="vn-editor__field vn-editor__row">
-        <input
-          id="vn-use-avatar"
-          type="checkbox"
-          data-testid="vn-editor-avatar"
-          [ngModel]="useAvatar()"
-          (ngModelChange)="useAvatar.set($event)"
-          name="useAvatar"
-        />
-        <label for="vn-use-avatar">Use my character avatar as the post sprite</label>
-      </div>
+      @if (avatarUrl(); as avatar) {
+        <div class="vn-editor__field vn-editor__row">
+          <input
+            id="vn-use-avatar"
+            type="checkbox"
+            data-testid="vn-editor-avatar"
+            [ngModel]="useAvatar()"
+            (ngModelChange)="useAvatar.set($event)"
+            name="useAvatar"
+          />
+          <label for="vn-use-avatar">Use my character avatar as the post sprite</label>
+          <img
+            class="vn-editor__avatar"
+            data-testid="vn-editor-avatar-preview"
+            [src]="avatar"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            (error)="hideBrokenThumb($event)"
+          />
+        </div>
+      }
 
       <fieldset class="vn-editor__field">
         <legend>Voicebox skin</legend>
