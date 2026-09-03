@@ -346,9 +346,22 @@ lookup error) renders exactly as a plain post.
     cached).
 - **Editor** — `<hug-forum-vn-profile-editor>`, opened from the forum-index
   "VN profile" toggle (logged-in only): character sticker (or none), the
-  platform character avatar (`/bff/user/character/avatar`) as the sprite, a
-  voicebox skin (`classic|glass|retro|neon|paper`), an accent color, and a
-  read-aloud voice style (`warm|bright|deep|soft|robot`).
+  platform character avatar as the sprite, a voicebox skin
+  (`classic|glass|retro|neon|paper`), an accent color, and a read-aloud voice
+  style (`warm|bright|deep|soft|robot`).
+- **Character avatar as a sprite** — `src/app/character-avatar.ts` +
+  `CharacterAvatarService` own this contract. A sprite is the POST AUTHOR's
+  avatar drawn in a READER's browser, so the stored `characterImgRef` has to
+  name *whose* avatar: the editor probes
+  `GET /bff/user/character/avatar` (fail-soft, memoized — a 404 or a missing
+  route hides the option entirely) for the caller's opaque handle and stores the
+  constructed body URL `/bff/user/character/avatar/{ref}/body`, which
+  `hugmesh-user-bff-api` serves to any reader in the same brand. The URL is
+  always rebuilt from the validated handle, never copied from the response.
+  The pre-fix editor stored the bare path `/bff/user/character/avatar`, which
+  named no owner and had no route behind it, so every avatar sprite rendered
+  broken (hugmesh-forum-bff-api issue #3); topic-detail now ignores that legacy
+  value and falls back to the sticker instead of emitting a broken `<img>`.
 - **Rendering** — topic-detail applies the author's skin via `applyVoicebox`:
   `data-vnskin` (allow-listed values only) plus the `--forum-vnbox-accent`
   custom property (strict `#rrggbb` re-validation before `setProperty`). The

@@ -23,6 +23,7 @@ import {
   isSafeCharacterImgRef,
 } from './vn-profile.service';
 import { insertAtCursor, stickerBodyUrl, stickerToken, transformStickerTokens } from './stickers';
+import { isLegacyCharacterAvatarRef } from './character-avatar';
 import { StickerPickerComponent } from './sticker-picker.component';
 
 /** Read-aloud cap: at most this many characters are handed to speechSynthesis
@@ -272,13 +273,27 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
    * the server allowlists too, but never trust the wire), else the sticker
    * body URL for their stickerSlug, else nothing.
    *
+   * The LEGACY bare avatar handle path is skipped
+   * ({@link isLegacyCharacterAvatarRef}): a VN profile saved before the avatar
+   * serve route existed stored a path that names no owner, so it can never
+   * resolve to this author's pixels — it is a JSON endpoint today, and putting
+   * it in an `<img src>` is exactly the broken image hugmesh-forum-bff-api
+   * issue #3 reported. Falling through to the sticker (or to no sprite at all)
+   * degrades those profiles gracefully until their owner saves again.
+   *
    * @param p - The post.
    * @returns A same-origin image URL, or `null` (no sprite column).
    */
   spriteUrl(p: ForumPost): string | null {
     const prof = this.profileOf(p);
     if (!prof) return null;
-    if (prof.characterImgRef && isSafeCharacterImgRef(prof.characterImgRef)) return prof.characterImgRef;
+    if (
+      prof.characterImgRef &&
+      isSafeCharacterImgRef(prof.characterImgRef) &&
+      !isLegacyCharacterAvatarRef(prof.characterImgRef)
+    ) {
+      return prof.characterImgRef;
+    }
     if (prof.stickerSlug) return stickerBodyUrl(prof.stickerSlug);
     return null;
   }

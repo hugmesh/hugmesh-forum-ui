@@ -8,6 +8,7 @@ import { ForumAnnouncementsService } from './forum-announcements.service';
 import { SessionService, HugSession } from './session.service';
 import { VnProfileService } from './vn-profile.service';
 import { StickerService } from './sticker.service';
+import { CharacterAvatarService } from './character-avatar.service';
 
 function cat(over: Partial<ForumCategory> = {}): ForumCategory {
   return { id: 1, name: 'General', description: 'Talk', topicCount: 3, postCount: 9, ...over };
@@ -41,11 +42,15 @@ describe('ForumIndexComponent', () => {
     annService.load.and.resolveTo();
 
     // The VN editor panel (opened from the header) probes these — keep the spec
-    // network-free by stubbing both fail-soft services.
+    // network-free by stubbing ALL THREE fail-soft services. CharacterAvatarService
+    // is the third: unstubbed it fetches /bff/user/character/avatar for real, which
+    // karma answers 404, so the spec still passed while making a live request.
     const vn = jasmine.createSpyObj<VnProfileService>('VnProfileService', ['getMe', 'saveMe']);
     vn.getMe.and.resolveTo(null);
     const stickers = jasmine.createSpyObj<StickerService>('StickerService', ['listOwn']);
     stickers.listOwn.and.resolveTo(null);
+    const avatars = jasmine.createSpyObj<CharacterAvatarService>('CharacterAvatarService', ['myImageUrl']);
+    avatars.myImageUrl.and.resolveTo(null);
 
     await TestBed.configureTestingModule({
       imports: [ForumIndexComponent],
@@ -55,6 +60,7 @@ describe('ForumIndexComponent', () => {
         { provide: ForumAnnouncementsService, useValue: annService },
         { provide: VnProfileService, useValue: vn },
         { provide: StickerService, useValue: stickers },
+        { provide: CharacterAvatarService, useValue: avatars },
       ],
     }).compileComponents();
 
