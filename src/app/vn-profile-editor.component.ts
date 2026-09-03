@@ -31,9 +31,10 @@ import { isCharacterAvatarBodyUrl, isLegacyCharacterAvatarRef } from './characte
  * browser had nothing to fetch and every avatar sprite rendered broken.
  *
  * Fail-soft: the sticker chooser is hidden when the sticker endpoint is
- * unavailable, and so is the avatar option when the caller has no stored
- * picture (or the endpoint is unavailable); loading errors leave the classic
- * defaults in place.
+ * unavailable, and the avatar option is not OFFERED when the caller has no
+ * stored picture (or the endpoint is unavailable) — unless their profile
+ * already has it on, in which case the control stays so it can be turned off;
+ * loading errors leave the classic defaults in place.
  *
  * a11y: a labelled region; every control is labelled; radios are grouped in
  * fieldsets with legends; the save outcome is announced via a live region.
@@ -63,8 +64,16 @@ export class VnProfileEditorComponent implements OnInit {
   readonly stickerSlug = signal<string | null>(null);
   readonly useAvatar = signal(false);
   /** The caller's resolved character-avatar image URL, or null = no avatar /
-   *  endpoint unavailable — hide the avatar option (feature-detect). */
+   *  endpoint unavailable — no preview to show (feature-detect). */
   readonly avatarUrl = signal<string | null>(null);
+  /** Whether to OFFER the avatar option at all. True when a URL resolved AND
+   *  whenever the stored profile already has the option ON: a probe failure
+   *  (picture deleted, transient 404, serve route not deployed yet) must never
+   *  strand a user with a stored ref and NO control to turn it off — that ref
+   *  outranks their sticker in the reader's spriteUrl(), so the sprite would
+   *  stay dead forever. Latched in ngOnInit rather than computed, so unticking
+   *  does not make the control vanish mid-edit. */
+  readonly avatarOptionVisible = signal(false);
   /** The characterImgRef the profile was loaded with, kept so a transient
    *  avatar-probe failure cannot silently clear an ALREADY-resolvable ref on an
    *  unrelated save. */
@@ -102,6 +111,9 @@ export class VnProfileEditorComponent implements OnInit {
       if (profile.voiceboxAccent) this.accent.set(profile.voiceboxAccent);
       this.voiceStyle.set(profile.voiceStyle ?? '');
     }
+    // AFTER useAvatar is seeded: offer the control when it resolved OR when it
+    // is already on, so it is always possible to turn it back off.
+    this.avatarOptionVisible.set(avatarUrl !== null || this.useAvatar());
     this.loading.set(false);
   }
 

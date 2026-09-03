@@ -37,7 +37,7 @@
         </fieldset>
       }
 
-      @if (avatarUrl(); as avatar) {
+      @if (avatarOptionVisible()) {
         <div class="vn-editor__field vn-editor__row">
           <input
             id="vn-use-avatar"
@@ -48,15 +48,17 @@
             name="useAvatar"
           />
           <label for="vn-use-avatar">Use my character avatar as the post sprite</label>
-          <img
-            class="vn-editor__avatar"
-            data-testid="vn-editor-avatar-preview"
-            [src]="avatar"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            (error)="hideBrokenThumb($event)"
-          />
+          @if (avatarUrl(); as avatar) {
+            <img
+              class="vn-editor__avatar"
+              data-testid="vn-editor-avatar-preview"
+              [src]="avatar"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              (error)="hideBrokenThumb($event)"
+            />
+          }
         </div>
       }
 

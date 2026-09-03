@@ -177,6 +177,30 @@ describe('VnProfileEditorComponent', () => {
     expect(vn.saveMe).toHaveBeenCalledWith(jasmine.objectContaining({ characterImgRef: null }));
   });
 
+  // REGRESSION GUARD: a probe failure must never strand a user with a stored
+  // ref and no control to clear it. topic-detail's spriteUrl() prefers
+  // characterImgRef over stickerSlug, so a dead ref they cannot untick would
+  // hide their sprite on every post, permanently, with no UI to escape.
+  it('still OFFERS the avatar option when the probe fails but a ref is stored, so it can be turned off', async () => {
+    vn.getMe.and.resolveTo(profile({ characterImgRef: AVATAR_URL, stickerSlug: 'wave' }));
+    avatars.myImageUrl.and.resolveTo(null);
+    vn.saveMe.and.resolveTo(profile());
+    await render();
+    expect(el().querySelector('[data-testid="vn-editor-avatar"]')).not.toBeNull();
+    // …with no preview, because nothing resolved.
+    expect(el().querySelector('[data-testid="vn-editor-avatar-preview"]')).toBeNull();
+    component.useAvatar.set(false);
+    await component.save();
+    expect(vn.saveMe).toHaveBeenCalledWith(jasmine.objectContaining({ characterImgRef: null, stickerSlug: 'wave' }));
+  });
+
+  it('still OFFERS the avatar option for a LEGACY bare-path ref when the probe fails', async () => {
+    vn.getMe.and.resolveTo(profile({ characterImgRef: CHARACTER_AVATAR_HANDLE_PATH }));
+    avatars.myImageUrl.and.resolveTo(null);
+    await render();
+    expect(el().querySelector('[data-testid="vn-editor-avatar"]')).not.toBeNull();
+  });
+
   it('keeps an already-resolvable stored ref when the avatar probe fails', async () => {
     // Fail-soft: a transient probe failure on an unrelated save must not drop
     // the user's sprite, because the stored ref still resolves for readers.
