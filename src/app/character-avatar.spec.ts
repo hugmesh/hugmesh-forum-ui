@@ -1,8 +1,11 @@
 import {
   CHARACTER_AVATAR_HANDLE_PATH,
+  OWNER_BLIND_IMG_REFS,
+  SELF_AVATAR_BODY_PATH,
   characterAvatarBodyUrl,
   isCharacterAvatarBodyUrl,
   isLegacyCharacterAvatarRef,
+  isOwnerBlindImgRef,
 } from './character-avatar';
 import { isSafeCharacterImgRef, VN_CHARACTER_IMG_MAX_LENGTH } from './vn-profile.service';
 
@@ -55,5 +58,38 @@ describe('characterAvatarBodyUrl', () => {
     expect(isLegacyCharacterAvatarRef(CHARACTER_AVATAR_HANDLE_PATH)).toBeTrue();
     expect(isLegacyCharacterAvatarRef(characterAvatarBodyUrl(REF))).toBeFalse();
     expect(isLegacyCharacterAvatarRef(null)).toBeFalse();
+  });
+});
+
+describe('isOwnerBlindImgRef', () => {
+  const REF = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+
+  // Client mirror of hugmesh-forum-bff-api VnProfileDto.OWNER_BLIND_IMG_REFS.
+  it('declares exactly the two subject-implicit /bff/user routes', () => {
+    expect(OWNER_BLIND_IMG_REFS).toEqual([CHARACTER_AVATAR_HANDLE_PATH, SELF_AVATAR_BODY_PATH]);
+    expect(SELF_AVATAR_BODY_PATH).toBe('/bff/user/profile/avatar/body');
+  });
+
+  // BOTH are same-origin and pass the <img src> origin allowlist, so that guard
+  // cannot see this defect — which is the whole reason this predicate exists.
+  it('catches refs the origin allowlist happily admits', () => {
+    for (const ref of OWNER_BLIND_IMG_REFS) {
+      expect(isSafeCharacterImgRef(ref)).toBeTrue();
+      expect(isOwnerBlindImgRef(ref)).toBeTrue();
+    }
+  });
+
+  it('trims trailing slashes before deciding', () => {
+    expect(isOwnerBlindImgRef(`${CHARACTER_AVATAR_HANDLE_PATH}/`)).toBeTrue();
+    expect(isOwnerBlindImgRef(`${SELF_AVATAR_BODY_PATH}//`)).toBeTrue();
+  });
+
+  // Surgical: a rule one segment too wide would blank every real avatar sprite
+  // on the platform and look exactly like the bug it was written to fix.
+  it('never touches a real serve URL', () => {
+    expect(isOwnerBlindImgRef(characterAvatarBodyUrl(REF))).toBeFalse();
+    expect(isOwnerBlindImgRef('/bff/user/character/stickers/wave/body')).toBeFalse();
+    expect(isOwnerBlindImgRef(null)).toBeFalse();
+    expect(isOwnerBlindImgRef(undefined)).toBeFalse();
   });
 });

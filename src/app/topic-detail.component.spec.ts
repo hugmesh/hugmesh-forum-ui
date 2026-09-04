@@ -6,7 +6,7 @@ import { signal } from '@angular/core';
 import { MAX_SPEECH_CHARS, TopicDetailComponent, speechAccess } from './topic-detail.component';
 import { ForumService, ForumPost, TopicDetail } from './forum.service';
 import { VnProfile, VnProfileService } from './vn-profile.service';
-import { CHARACTER_AVATAR_HANDLE_PATH, characterAvatarBodyUrl } from './character-avatar';
+import { CHARACTER_AVATAR_HANDLE_PATH, SELF_AVATAR_BODY_PATH, characterAvatarBodyUrl } from './character-avatar';
 
 /** A RESOLVED character-avatar sprite ref — what the VN editor stores now that
  *  hugmesh-user-bff-api serves the pixels per owner handle. */
@@ -390,6 +390,45 @@ describe('TopicDetailComponent', () => {
     });
     await render();
     expect(el().querySelector('[data-testid="post-sprite"]')).toBeNull();
+  });
+
+  // The OTHER owner-blind spelling, and the one that fails silently rather than
+  // visibly: /bff/user/profile/avatar/body resolves its owner from the caller's
+  // JWT, so it returns a real 200 image — the READER's own picture. Rendering it
+  // beside another user's name misattributes a face instead of showing a broken
+  // image, so no error handler and no broken-image glyph would ever reveal it.
+  it('ignores the owner-scoped SELF avatar serve; falls back to the sticker', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({ characterImgRef: SELF_AVATAR_BODY_PATH, stickerSlug: 'wave' }),
+    });
+    await render();
+    const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
+    expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
+  });
+
+  // Trailing-slash near-miss of the legacy path: same endpoint, one character
+  // different — a guard that only matched the exact string would render it.
+  it('ignores an owner-blind ref with a trailing slash', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({
+        characterImgRef: `${CHARACTER_AVATAR_HANDLE_PATH}/`,
+        stickerSlug: 'wave',
+      }),
+    });
+    await render();
+    const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
+    expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
+  });
+
+  // …and the guard stays surgical: a REAL avatar serve URL still renders. This is
+  // the assertion that fails if the owner-blind rule is ever widened by a segment.
+  it('still renders a real character-avatar serve URL', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({ characterImgRef: AVATAR_URL, stickerSlug: 'wave' }),
+    });
+    await render();
+    const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
+    expect(sprite.getAttribute('src')).toBe(AVATAR_URL);
   });
 
   it('rejects a bad accent hex at the article boundary (attr set, var NOT set)', async () => {

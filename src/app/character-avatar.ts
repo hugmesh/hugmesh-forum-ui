@@ -68,9 +68,54 @@ export function isCharacterAvatarBodyUrl(ref: string | null | undefined): boolea
  * unresolvable BY DESIGN for a reader — it names no owner — so the only correct
  * handling is to ignore it on the read side and rewrite it on the next save.
  *
+ * Narrower than {@link isOwnerBlindImgRef} on purpose: this one means "the owner
+ * meant to use their avatar", which is what the EDITOR re-ticks from. Use
+ * {@link isOwnerBlindImgRef} for the render decision.
+ *
  * @param ref - The candidate characterImgRef.
  * @returns `true` for exactly the legacy literal.
  */
 export function isLegacyCharacterAvatarRef(ref: string | null | undefined): boolean {
   return ref === CHARACTER_AVATAR_HANDLE_PATH;
+}
+
+/**
+ * The owner-scoped SELF avatar serve in hugmesh-user-bff-api
+ * (`ProfileController`). It resolves its owner from `jwt.getSubject()`, so it
+ * always returns the CALLER's own picture.
+ */
+export const SELF_AVATAR_BODY_PATH = '/bff/user/profile/avatar/body';
+
+/**
+ * The `/bff/user/**` spellings that resolve their owner from the CALLER rather
+ * than from the path. Client mirror of hugmesh-forum-bff-api's
+ * `VnProfileDto.OWNER_BLIND_IMG_REFS` — keep the two in step.
+ */
+export const OWNER_BLIND_IMG_REFS: readonly string[] = [
+  CHARACTER_AVATAR_HANDLE_PATH,
+  SELF_AVATAR_BODY_PATH,
+];
+
+/**
+ * Whether `ref` is OWNER-BLIND: a same-origin path whose owner comes from
+ * whoever fetches it, so it can never name the post's AUTHOR.
+ *
+ * A sprite is rendered next to another user's name, which makes the two cases
+ * different kinds of wrong:
+ * - the handle path is a JSON endpoint, so it is a broken image (issue #3);
+ * - the self-avatar serve returns a 200 IMAGE — the READER's own picture,
+ *   painted onto every post that stores it. That is worse than broken: it
+ *   misattributes a face to an author.
+ *
+ * The server clears these on write and suppresses them on the reader-facing
+ * lookup; this is the client's own guard, the same defence-in-depth
+ * `isSafeCharacterImgRef` applies to the origin allowlist. Trailing slashes are
+ * trimmed before comparing so the one-character variants cannot slip past.
+ *
+ * @param ref - The candidate characterImgRef.
+ * @returns `true` when the ref must not be rendered as this author's sprite.
+ */
+export function isOwnerBlindImgRef(ref: string | null | undefined): boolean {
+  if (typeof ref !== 'string') return false;
+  return OWNER_BLIND_IMG_REFS.includes(ref.replace(/\/+$/, ''));
 }

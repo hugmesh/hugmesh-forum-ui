@@ -362,6 +362,16 @@ lookup error) renders exactly as a plain post.
   named no owner and had no route behind it, so every avatar sprite rendered
   broken (hugmesh-forum-bff-api issue #3); topic-detail now ignores that legacy
   value and falls back to the sticker instead of emitting a broken `<img>`.
+- **Owner-blind refs never render** — `isOwnerBlindImgRef` (client mirror of
+  `hugmesh-forum-bff-api`'s `VnProfileDto.OWNER_BLIND_IMG_REFS`) rejects the two
+  `/bff/user/**` paths that resolve their owner from whoever *fetches* them, so
+  they can never name the post's author: the legacy handle path above, and the
+  owner-scoped self-avatar serve `/bff/user/profile/avatar/body`. The second is
+  the quiet one — it returns a real `200` image, the **reader's own** picture, so
+  it would misattribute a face to an author rather than showing a broken image,
+  and no `(error)` handler would ever fire on it. Both pass
+  `isSafeCharacterImgRef` (they *are* same-origin), which is exactly why this is
+  a separate predicate. Trailing slashes are trimmed before comparing.
 - **Rendering** — topic-detail applies the author's skin via `applyVoicebox`:
   `data-vnskin` (allow-listed values only) plus the `--forum-vnbox-accent`
   custom property (strict `#rrggbb` re-validation before `setProperty`). The
