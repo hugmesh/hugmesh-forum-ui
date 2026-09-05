@@ -420,6 +420,23 @@ describe('TopicDetailComponent', () => {
     expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
   });
 
+  // The BYPASS the round-2 refutation proved end-to-end, at the surface that renders
+  // it: a dot-segment spelling of the self-avatar serve. It is charset-legal, equals
+  // no owner-blind literal, and Chromium still fetches /bff/user/profile/avatar/body
+  // — the READER's own picture, 200 OK, no broken-image glyph and no (error) event.
+  // It must fall back to the sticker exactly like the plain spelling.
+  it('ignores an owner-blind ref spelled with a dot segment', async () => {
+    vn.lookup.and.resolveTo({
+      'google:alice@gmail.com': vnProfile({
+        characterImgRef: '/bff/user/profile/avatar/./body',
+        stickerSlug: 'wave',
+      }),
+    });
+    await render();
+    const sprite = el().querySelector<HTMLImageElement>('[data-testid="post-sprite"]')!;
+    expect(sprite.getAttribute('src')).toBe('/bff/user/character/stickers/wave/body');
+  });
+
   // …and the guard stays surgical: a REAL avatar serve URL still renders. This is
   // the assertion that fails if the owner-blind rule is ever widened by a segment.
   it('still renders a real character-avatar serve URL', async () => {

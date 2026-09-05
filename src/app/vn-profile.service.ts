@@ -36,6 +36,21 @@ export const VN_CHARACTER_IMG_PREFIX = '/bff/user/';
 /** Max characterImgRef length (server contract mirror). */
 export const VN_CHARACTER_IMG_MAX_LENGTH = 256;
 
+/**
+ * Client mirror of hugmesh-forum-bff-api `VnProfileDto.CHARACTER_IMG_REF`: a strict
+ * same-origin `/bff/user/...` path over a conservative charset (so no scheme,
+ * authority, query, fragment or attribute-breaking character is even expressible).
+ *
+ * The three lookaheads after the prefix refuse every spelling a URL PARSER rewrites
+ * — `..` traversal, a leading or embedded empty segment (`//`), and a `.`
+ * dot-segment. Those matter beyond traversal: the owner-blind rules are path
+ * comparisons, and `/bff/user/profile/avatar/./body` is a different string that a
+ * browser still sends as `/bff/user/profile/avatar/body`. A `.` INSIDE a segment
+ * (`portrait.v2.png`, `.hidden`) is an ordinary character and stays legal.
+ */
+export const VN_CHARACTER_IMG_REF_RE =
+  /^\/bff\/user\/(?!.*\.\.)(?!\/)(?!.*\/\/)(?!(?:.*\/)?\.(?:\/|$))[A-Za-z0-9._/-]{1,246}$/;
+
 /** speechSynthesis pitch/rate tuning per voice style (see task contract). */
 export const VOICE_TUNING: Readonly<Record<VoiceStyle, { pitch: number; rate: number }>> = {
   warm: { pitch: 1.0, rate: 0.95 },
@@ -66,9 +81,15 @@ export interface VnProfileSaveRequest {
 
 /**
  * Whether `ref` is safe to render as an `<img src>`: a same-origin path under
- * the strict `/bff/user/` allowlist, bounded length, no traversal and none of
- * the characters that could re-interpret the value in an attribute context.
- * The server enforces the same allowlist; this is the client's own guard.
+ * the strict `/bff/user/` allowlist, bounded length, no traversal, no spelling a
+ * URL parser would rewrite, and none of the characters that could re-interpret
+ * the value in an attribute context. The server enforces the same allowlist
+ * ({@link VN_CHARACTER_IMG_REF_RE} is its mirror); this is the client's own guard,
+ * so a compromised upstream cannot smuggle a value into the DOM.
+ *
+ * The attribute-character check is redundant against the charset and kept
+ * deliberately: it states the property directly, so widening the charset can never
+ * silently re-open an attribute-injection hole.
  *
  * @param ref - The candidate characterImgRef.
  * @returns `true` only for an allowlisted same-origin path.
@@ -78,7 +99,7 @@ export function isSafeCharacterImgRef(ref: string): boolean {
     typeof ref === 'string' &&
     ref.startsWith(VN_CHARACTER_IMG_PREFIX) &&
     ref.length <= VN_CHARACTER_IMG_MAX_LENGTH &&
-    !ref.includes('..') &&
+    VN_CHARACTER_IMG_REF_RE.test(ref) &&
     !/[\s<>"'`\\]/.test(ref)
   );
 }

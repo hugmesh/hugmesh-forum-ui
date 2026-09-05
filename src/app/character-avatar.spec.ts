@@ -6,6 +6,7 @@ import {
   isCharacterAvatarBodyUrl,
   isLegacyCharacterAvatarRef,
   isOwnerBlindImgRef,
+  wirePath,
 } from './character-avatar';
 import { isSafeCharacterImgRef, VN_CHARACTER_IMG_MAX_LENGTH } from './vn-profile.service';
 
@@ -58,6 +59,12 @@ describe('characterAvatarBodyUrl', () => {
     expect(isLegacyCharacterAvatarRef(CHARACTER_AVATAR_HANDLE_PATH)).toBeTrue();
     expect(isLegacyCharacterAvatarRef(characterAvatarBodyUrl(REF))).toBeFalse();
     expect(isLegacyCharacterAvatarRef(null)).toBeFalse();
+    // …in EVERY spelling of it. The editor re-ticks "use my avatar" from this
+    // predicate, and the server deliberately keeps storing the literal for that
+    // purpose, so a raw-string compare would silently drop the repair signal for a
+    // row spelled with a trailing slash or a dot segment.
+    expect(isLegacyCharacterAvatarRef('/bff/user/character/./avatar')).toBeTrue();
+    expect(isLegacyCharacterAvatarRef(`${CHARACTER_AVATAR_HANDLE_PATH}/`)).toBeTrue();
   });
 });
 
@@ -84,6 +91,22 @@ describe('isOwnerBlindImgRef', () => {
     expect(isOwnerBlindImgRef(`${SELF_AVATAR_BODY_PATH}//`)).toBeTrue();
   });
 
+  // THE BYPASS (round-2 refutation, HIGH). A membership test compares STRINGS; the
+  // browser compares PARSED paths. Measured in Chromium against a wire-logging
+  // server: <img src="/bff/user/profile/avatar/./body"> requests
+  // /bff/user/profile/avatar/body, and is de-duplicated against an <img> spelled
+  // with the plain path — i.e. the two URLs are identical after parsing. So a
+  // raw-string guard renders the READER's own face beside the AUTHOR's name, with a
+  // real 200, no broken-image glyph and no (error) event to notice.
+  it('sees through every spelling a URL parser rewrites', () => {
+    expect(isOwnerBlindImgRef('/bff/user/profile/avatar/./body')).toBeTrue();
+    expect(isOwnerBlindImgRef('/bff/user/character/./avatar')).toBeTrue();
+    expect(isOwnerBlindImgRef('/bff/user//profile/avatar/body')).toBeTrue();
+    expect(isOwnerBlindImgRef('/bff/user/profile/avatar/body/.')).toBeTrue();
+    expect(isOwnerBlindImgRef('/bff/user/character/../profile/avatar/body')).toBeTrue();
+    expect(isOwnerBlindImgRef('/bff/user/profile/avatar/body?v=2')).toBeTrue();
+  });
+
   // Surgical: a rule one segment too wide would blank every real avatar sprite
   // on the platform and look exactly like the bug it was written to fix.
   it('never touches a real serve URL', () => {
@@ -91,5 +114,46 @@ describe('isOwnerBlindImgRef', () => {
     expect(isOwnerBlindImgRef('/bff/user/character/stickers/wave/body')).toBeFalse();
     expect(isOwnerBlindImgRef(null)).toBeFalse();
     expect(isOwnerBlindImgRef(undefined)).toBeFalse();
+  });
+
+  // …and a dot INSIDE a segment is an ordinary character no parser rewrites, so a
+  // filename-shaped ref must keep rendering. This is the assertion that fails if the
+  // dot-segment rule is ever written as "reject any '.'".
+  it('leaves a dot inside a segment alone', () => {
+    expect(isOwnerBlindImgRef('/bff/user/character/portrait.v2.png')).toBeFalse();
+    expect(isSafeCharacterImgRef('/bff/user/character/portrait.v2.png')).toBeTrue();
+    expect(isSafeCharacterImgRef('/bff/user/character/.hidden/body')).toBeTrue();
+  });
+
+  // The origin allowlist is the OTHER half of the same fix: the spellings above are
+  // now refused outright, so a compromised upstream cannot even hand one to the DOM.
+  it('is backed by an origin allowlist that refuses the same spellings', () => {
+    for (const smuggled of [
+      '/bff/user/profile/avatar/./body',
+      '/bff/user/character/./avatar',
+      '/bff/user//profile/avatar/body',
+      '/bff/user/profile/avatar/body/.',
+      '/bff/user/character/../profile/avatar/body',
+    ]) {
+      expect(isSafeCharacterImgRef(smuggled)).withContext(smuggled).toBeFalse();
+    }
+  });
+});
+
+describe('wirePath', () => {
+  const SELF = '/bff/user/profile/avatar/body';
+
+  it('collapses every spelling a browser rewrites', () => {
+    expect(wirePath('/bff/user/profile/avatar/./body')).toBe(SELF);
+    expect(wirePath('/bff/user//profile/avatar/body')).toBe(SELF);
+    expect(wirePath(`${SELF}/`)).toBe(SELF);
+    expect(wirePath('/bff/user/character/../profile/avatar/body')).toBe(SELF);
+    expect(wirePath(`${SELF}?v=2#x`)).toBe(SELF);
+  });
+
+  it('leaves a canonical path exactly as it is', () => {
+    const real = characterAvatarBodyUrl('3f2504e0-4f89-41d3-9a0c-0305e82c3301')!;
+    expect(wirePath(real)).toBe(real);
+    expect(wirePath('/bff/user/character/portrait.v2.png')).toBe('/bff/user/character/portrait.v2.png');
   });
 });

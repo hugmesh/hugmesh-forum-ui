@@ -60,6 +60,39 @@ export function isCharacterAvatarBodyUrl(ref: string | null | undefined): boolea
 }
 
 /**
+ * The path a BROWSER would actually request for `ref`.
+ *
+ * Every rule below is a comparison against a known path, and a comparison of raw
+ * STRINGS is not the rule it looks like: a URL parser removes `.` / `..`
+ * dot-segments (RFC 3986 §5.2.4) and intermediaries collapse empty segments, so
+ * `/bff/user/profile/avatar/./body` is a different string and the SAME endpoint.
+ * Measured in Chromium: an `<img>` with that src puts `/bff/user/profile/avatar/body`
+ * on the wire, and is de-duplicated against an `<img>` spelled with the plain path.
+ *
+ * hugmesh-forum-bff-api refuses those spellings on the way in and canonicalises the
+ * same way on the way out (`VnProfileService.wirePath`); this is the client mirror,
+ * needed because rows written before that rule existed are still in the table.
+ *
+ * @param ref - A same-origin path.
+ * @returns The canonical absolute path: no dot, empty or trailing segments, no
+ *   query/fragment.
+ */
+export function wirePath(ref: string): string {
+  const cut = ref.search(/[?#]/);
+  const path = cut === -1 ? ref : ref.slice(0, cut);
+  const segments: string[] = [];
+  for (const segment of path.split('/')) {
+    if (segment === '' || segment === '.') continue; // empty + "." segments vanish
+    if (segment === '..') {
+      segments.pop(); // ".." pops (a no-op at the root)
+      continue;
+    }
+    segments.push(segment);
+  }
+  return (path.startsWith('/') ? '/' : '') + segments.join('/');
+}
+
+/**
  * Whether `ref` is the LEGACY pre-fix avatar ref — the bare handle path a VN
  * profile saved before this route existed.
  *
@@ -69,14 +102,15 @@ export function isCharacterAvatarBodyUrl(ref: string | null | undefined): boolea
  * handling is to ignore it on the read side and rewrite it on the next save.
  *
  * Narrower than {@link isOwnerBlindImgRef} on purpose: this one means "the owner
- * meant to use their avatar", which is what the EDITOR re-ticks from. Use
+ * meant to use their avatar", which is what the EDITOR re-ticks from — and the
+ * server deliberately keeps storing this literal for exactly that reason. Use
  * {@link isOwnerBlindImgRef} for the render decision.
  *
  * @param ref - The candidate characterImgRef.
- * @returns `true` for exactly the legacy literal.
+ * @returns `true` for every spelling of the legacy literal.
  */
 export function isLegacyCharacterAvatarRef(ref: string | null | undefined): boolean {
-  return ref === CHARACTER_AVATAR_HANDLE_PATH;
+  return typeof ref === 'string' && wirePath(ref) === CHARACTER_AVATAR_HANDLE_PATH;
 }
 
 /**
@@ -107,15 +141,18 @@ export const OWNER_BLIND_IMG_REFS: readonly string[] = [
  *   painted onto every post that stores it. That is worse than broken: it
  *   misattributes a face to an author.
  *
- * The server clears these on write and suppresses them on the reader-facing
- * lookup; this is the client's own guard, the same defence-in-depth
- * `isSafeCharacterImgRef` applies to the origin allowlist. Trailing slashes are
- * trimmed before comparing so the one-character variants cannot slip past.
+ * The server suppresses both on the reader-facing lookup (and refuses to store the
+ * self-avatar serve at all); this is the client's own guard, the same
+ * defence-in-depth `isSafeCharacterImgRef` applies to the origin allowlist.
+ *
+ * The comparison runs on the CANONICAL path ({@link wirePath}), never the raw
+ * string: trailing slashes, `.` dot-segments and empty segments all reach the same
+ * endpoint in a browser, so they must all reach the same answer here.
  *
  * @param ref - The candidate characterImgRef.
  * @returns `true` when the ref must not be rendered as this author's sprite.
  */
 export function isOwnerBlindImgRef(ref: string | null | undefined): boolean {
   if (typeof ref !== 'string') return false;
-  return OWNER_BLIND_IMG_REFS.includes(ref.replace(/\/+$/, ''));
+  return OWNER_BLIND_IMG_REFS.includes(wirePath(ref));
 }

@@ -369,9 +369,19 @@ lookup error) renders exactly as a plain post.
   owner-scoped self-avatar serve `/bff/user/profile/avatar/body`. The second is
   the quiet one — it returns a real `200` image, the **reader's own** picture, so
   it would misattribute a face to an author rather than showing a broken image,
-  and no `(error)` handler would ever fire on it. Both pass
-  `isSafeCharacterImgRef` (they *are* same-origin), which is exactly why this is
-  a separate predicate. Trailing slashes are trimmed before comparing.
+  and no `(error)` handler would ever fire on it. Both are same-origin, which is
+  exactly why this is a separate predicate from the origin allowlist.
+- **The comparison is on the canonical path, not the raw string** — `wirePath`.
+  A membership test compares strings; a browser compares *parsed* paths, so
+  `/bff/user/profile/avatar/./body` is a different string and the same endpoint.
+  Measured in Chromium against a wire-logging server: that `<img>` requests
+  `/bff/user/profile/avatar/body` and is de-duplicated against an `<img>` spelled
+  with the plain path. `wirePath` therefore removes `.`/`..` dot-segments, collapses
+  empty (`//`) segments, drops a query/fragment and trims trailing slashes before
+  either predicate decides. `isSafeCharacterImgRef` refuses those spellings outright
+  as well (`VN_CHARACTER_IMG_REF_RE`, the mirror of the server charset), so a
+  compromised upstream cannot hand one to the DOM either. A `.` **inside** a segment
+  (`portrait.v2.png`, `.hidden`) is an ordinary character and still renders.
 - **Rendering** — topic-detail applies the author's skin via `applyVoicebox`:
   `data-vnskin` (allow-listed values only) plus the `--forum-vnbox-accent`
   custom property (strict `#rrggbb` re-validation before `setProperty`). The
