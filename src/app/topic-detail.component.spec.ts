@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { signal } from '@angular/core';
 
@@ -12,6 +12,7 @@ import { CHARACTER_AVATAR_HANDLE_PATH, SELF_AVATAR_BODY_PATH, characterAvatarBod
  *  hugmesh-user-bff-api serves the pixels per owner handle. */
 const AVATAR_URL = characterAvatarBodyUrl('3f2504e0-4f89-41d3-9a0c-0305e82c3301')!;
 import { StickerService } from './sticker.service';
+import { MFA_CHALLENGE_ROUTE, StepUpRequiredError } from './step-up';
 
 function post(over: Partial<ForumPost> = {}): ForumPost {
   return {
@@ -242,6 +243,78 @@ describe('TopicDetailComponent', () => {
     await render();
     await component.toggleLock();
     expect(component.outcome()?.kind).toBe('alert');
+    expect(component.detail()!.topic.locked).toBeFalse();
+    // A generic failure is NOT a step-up refusal: no MFA offer.
+    fixture.detectChanges();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
+  });
+
+  // ── step-up (issue #3 item 1): the BFF refused with the platform contract ──
+
+  function stepUpRefusal(): StepUpRequiredError {
+    return new StepUpRequiredError({ retryHeader: null, via: 'legacy-phrase' }, 403, 'lock requires step-up re-authentication');
+  }
+
+  it('offers the platform MFA challenge with a returnTo back to THIS topic when the BFF demands step-up', async () => {
+    canModerate.set(true);
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    // Under the host shell the injected Router is the SHELL's, so its url is the
+    // host-level topic URL — exactly what login-ui must navigate back to.
+    spyOnProperty(TestBed.inject(Router), 'url', 'get').and.returnValue('/social/forum/topics/10');
+    await render();
+
+    await component.toggleLock();
+    fixture.detectChanges();
+
+    // Nothing was performed: the topic is still unlocked and the live region says why.
+    expect(component.detail()!.topic.locked).toBeFalse();
+    expect(component.outcome()?.kind).toBe('alert');
+    expect(component.outcome()?.text).toContain('second-factor');
+    expect(component.stepUp()).toEqual({ action: 'lock' });
+
+    const offer = el().querySelector<HTMLElement>('[data-testid="mod-step-up"]')!;
+    expect(offer).not.toBeNull();
+    expect(offer.getAttribute('role')).toBe('group');
+    expect(offer.textContent).toContain('lock the topic again');
+    const verify = offer.querySelector<HTMLAnchorElement>('[data-testid="mod-step-up-verify"]')!;
+    expect(verify.tagName).toBe('A');
+    // The ABSOLUTE host route of login-ui's challenge screen, carrying the return URL.
+    expect(verify.getAttribute('href')).toBe(`${MFA_CHALLENGE_ROUTE}?returnTo=${encodeURIComponent('/social/forum/topics/10')}`);
+  });
+
+  it('names the pending action in the offer ("unlock") and clears it on the next attempt', async () => {
+    canModerate.set(true);
+    forum.getTopic.and.resolveTo(detail({ topic: { ...detail().topic, locked: true } }));
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+
+    await component.toggleLock();
+    fixture.detectChanges();
+    expect(component.stepUp()).toEqual({ action: 'unlock' });
+    expect(el().querySelector('[data-testid="mod-step-up"]')!.textContent).toContain('unlock the topic again');
+
+    // A retry that the (now stamped) session satisfies clears the offer.
+    forum.moderateTopic.and.resolveTo();
+    await component.toggleLock();
+    fixture.detectChanges();
+    expect(component.stepUp()).toBeNull();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
+    expect(component.detail()!.topic.locked).toBeFalse();
+  });
+
+  it('"Not now" dismisses the offer without performing anything', async () => {
+    canModerate.set(true);
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).not.toBeNull();
+
+    el().querySelector<HTMLButtonElement>('[data-testid="mod-step-up-dismiss"]')!.click();
+    fixture.detectChanges();
+
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(1);
     expect(component.detail()!.topic.locked).toBeFalse();
   });
 

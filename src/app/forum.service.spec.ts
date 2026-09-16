@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ForumService, FORUM_BASE_URL } from './forum.service';
 import { authInterceptor } from './auth.interceptor';
-import { SessionService, HugSession } from './session.service';
+import { SessionService, HugSession, sessionFetcher } from './session.service';
+import { STEP_UP_SIGNAL_HEADER, StepUpRequiredError, isStepUpRequiredError } from './step-up';
 
 function makeSession(over: Partial<HugSession> = {}): HugSession {
   return {
@@ -23,6 +24,9 @@ describe('ForumService', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    // The real SessionService probes GET /bff/session (plain fetch, not HttpClient)
+    // on construction; no BFF here, so it falls back to the mirror set() writes.
+    spyOn(sessionFetcher, 'fetch').and.rejectWith(new Error('offline'));
     TestBed.configureTestingModule({
       // The spec-covered reads/writes now delegate to the generated ng-openapi-gen
       // client (Angular HttpClient), so the service is exercised through
@@ -96,6 +100,61 @@ describe('ForumService', () => {
     expect(req.request.body).toEqual({ action: 'unlock', reason: 'resolved' });
     req.flush({ moderated: 10, action: 'unlock' });
     await result;
+  });
+
+  // ── step-up contract on the moderation path (issue #3 item 1) ──────────
+  /** Run `call`, expect it to reject, and hand back the rejection. */
+  async function rejection(call: Promise<unknown>): Promise<unknown> {
+    try {
+      await call;
+    } catch (e) {
+      return e;
+    }
+    throw new Error('expected the call to reject');
+  }
+
+  it('moderateTopic maps a 403 carrying X-Step-Up-Required to a StepUpRequiredError (structured signal)', async () => {
+    session.set(makeSession({ roles: ['mod', 'forum'] }));
+    const result = service.moderateTopic(10, 'lock');
+    const req = httpMock.expectOne('/bff/forum/moderation/topics/10');
+    req.flush(
+      { error: 'moderation requires step-up re-authentication' },
+      { status: 403, statusText: 'Forbidden', headers: { [STEP_UP_SIGNAL_HEADER]: 'X-Forum-StepUp' } },
+    );
+    const e = (await rejection(result)) as StepUpRequiredError;
+    expect(e).toBeInstanceOf(StepUpRequiredError);
+    expect(e.requirement).toEqual({ retryHeader: 'X-Forum-StepUp', via: 'signal' });
+    expect(e.status).toBe(403);
+  });
+
+  it('moderateTopic maps a 403 whose body carries the legacy "requires step-up" phrase (old BFF)', async () => {
+    session.set(makeSession({ roles: ['admin'] }));
+    const result = service.moderateTopic(10, 'unlock');
+    httpMock.expectOne('/bff/forum/moderation/topics/10')
+      .flush({ error: 'unlock requires step-up re-authentication' }, { status: 403, statusText: 'Forbidden' });
+    const e = (await rejection(result)) as StepUpRequiredError;
+    expect(e).toBeInstanceOf(StepUpRequiredError);
+    expect(e.requirement.via).toBe('legacy-phrase');
+  });
+
+  it('moderateTopic rethrows an ORDINARY 403 (a routine role DENY) untouched — no MFA prompt', async () => {
+    session.set(makeSession({ roles: ['mod'] }));
+    const result = service.moderateTopic(10, 'lock');
+    httpMock.expectOne('/bff/forum/moderation/topics/10')
+      .flush({ error: 'forbidden' }, { status: 403, statusText: 'Forbidden' });
+    const e = await rejection(result);
+    expect(e).toBeInstanceOf(HttpErrorResponse);
+    expect(isStepUpRequiredError(e)).toBeFalse();
+  });
+
+  it('moderateTopic rethrows a 500 untouched even if a stray signal header is present', async () => {
+    session.set(makeSession({ roles: ['admin'] }));
+    const result = service.moderateTopic(10, 'lock');
+    httpMock.expectOne('/bff/forum/moderation/topics/10')
+      .flush({ error: 'boom' }, { status: 500, statusText: 'Error', headers: { [STEP_UP_SIGNAL_HEADER]: 'X-Forum-StepUp' } });
+    const e = await rejection(result);
+    expect(e).toBeInstanceOf(HttpErrorResponse);
+    expect(isStepUpRequiredError(e)).toBeFalse();
   });
 
   // ── role-responsive gates (defence-in-depth; BFF is the real gate) ──

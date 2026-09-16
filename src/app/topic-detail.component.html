@@ -93,6 +93,34 @@
     }
   </div>
 
+  @if (stepUp(); as s) {
+    <!-- The BFF refused the moderation write with the platform's step-up
+         contract. Offer the platform's MFA challenge (login-ui, mounted by the
+         host at /login) with a returnTo back to this topic; nothing was performed,
+         so the moderator re-issues the action after verifying. -->
+    <div class="topic__stepup" role="group" aria-labelledby="mod-step-up-title" data-testid="mod-step-up">
+      <h2 id="mod-step-up-title" class="topic__stepup-title">Second-factor check required</h2>
+      <p class="forum-muted">
+        Verify with your authenticator app, a passkey or a recovery code, then come back and
+        {{ s.action }} the topic again. Nothing has been changed yet.
+      </p>
+      <div class="topic__stepup-actions">
+        <a
+          class="forum-btn"
+          data-testid="mod-step-up-verify"
+          [routerLink]="mfaChallengeRoute"
+          [queryParams]="{ returnTo: mfaReturnTo() }"
+        >Verify with a second factor</a>
+        <button
+          type="button"
+          class="forum-btn forum-btn--ghost"
+          data-testid="mod-step-up-dismiss"
+          (click)="dismissStepUp()"
+        >Not now</button>
+      </div>
+    </div>
+  }
+
   @if (canPost() && !d.topic.locked) {
     <section class="topic__reply" aria-labelledby="reply-heading">
       <h2 id="reply-heading">Reply</h2>

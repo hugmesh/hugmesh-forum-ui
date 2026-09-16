@@ -5,7 +5,7 @@ import { signal } from '@angular/core';
 import { ForumIndexComponent } from './forum-index.component';
 import { ForumService, ForumCategory } from './forum.service';
 import { ForumAnnouncementsService } from './forum-announcements.service';
-import { SessionService, HugSession } from './session.service';
+import { SessionService, sessionFetcher, HugSession } from './session.service';
 import { VnProfileService } from './vn-profile.service';
 import { StickerService } from './sticker.service';
 import { CharacterAvatarService } from './character-avatar.service';
@@ -52,6 +52,9 @@ describe('ForumIndexComponent', () => {
     const avatars = jasmine.createSpyObj<CharacterAvatarService>('CharacterAvatarService', ['myImageUrl']);
     avatars.myImageUrl.and.resolveTo(null);
 
+    // The real SessionService (root-provided) probes GET /bff/session when a spec
+    // injects it; no BFF here, so it falls back to the mirror set() writes.
+    spyOn(sessionFetcher, 'fetch').and.rejectWith(new Error('offline'));
     await TestBed.configureTestingModule({
       imports: [ForumIndexComponent],
       providers: [
