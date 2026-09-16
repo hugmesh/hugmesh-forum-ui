@@ -221,8 +221,10 @@ This remote's half of that contract lives in `src/app/step-up.ts`:
 - **Detection** — `ForumService.moderateTopic` rejects with a typed
   `StepUpRequiredError` when the BFF answers with the platform's step-up
   contract: a `403` carrying `X-Step-Up-Required: X-<flavour>-StepUp`, or the
-  legacy `"requires step-up"` phrase in the body. It is byte-compatible with
-  `hugmesh-admin-ui`'s `mfa/step-up-error.ts`. An ordinary 403 (a `mod` without
+  legacy `"requires step-up"` phrase in the body. It applies the same contract
+  as `hugmesh-admin-ui`'s `mfa/step-up-error.ts` (identical header name, phrase
+  pattern and 403-only rule; it reads Angular's `HttpErrorResponse` where
+  admin-ui reads its own `BffHttpError`). An ordinary 403 (a `mod` without
   the `forum` role, the gateway's `X-Route-Denied`) matches neither and surfaces
   exactly as before — a routine denial must never offer an MFA prompt.
 - **Offer** — `TopicDetailComponent` answers a `StepUpRequiredError` with an

@@ -19,8 +19,10 @@ import { HttpErrorResponse } from '@angular/common/http';
  * same call succeeds.
  *
  * <h2>How a step-up denial is recognised</h2>
- * Byte-compatible with hugmesh-admin-ui `mfa/step-up-error.ts`, the fleet's
- * reference detector:
+ * The same contract as hugmesh-admin-ui `mfa/step-up-error.ts`, the fleet's
+ * reference detector — identical header name, phrase pattern and 403-only rule
+ * (that detector reads its `BffHttpError`; this one reads Angular's
+ * `HttpErrorResponse`):
  * <ol>
  *   <li><b>STRUCTURED</b> — a 403 carrying `X-Step-Up-Required: X-<flavour>-StepUp`
  *       (admin-bff `web/StepUpRequiredException` + `ApiExceptionHandler`).</li>

@@ -102,6 +102,15 @@ function nonEmptyString(v: unknown): v is string {
  * reproduced here by design if we hydrated). Only a broadcast that leaves a
  * mirror behind (sign-in, role grant/revoke) triggers the authoritative re-read.
  *
+ * The same race has a second door: a probe ALREADY IN FLIGHT (from construction
+ * or an earlier broadcast) when the sign-out lands would resolve a tick later
+ * with the still-live cookie's 200 and resurrect the session. Every probe is
+ * therefore stamped with a {@link generation}; any external change to the
+ * session (a same-document broadcast — including the one our own {@link clear}
+ * fires — or a cross-tab write) bumps it, and a probe whose stamp is stale
+ * DISCARDS its result — success or failure — instead of writing over the newer
+ * state.
+ *
  * Roles are the lowercase Casdoor roles 'user'/'mod'/'admin'; the bff-apis
  * enforce ROLE_USER/MOD/ADMIN server-side — these signals are defence-in-depth
  * so the UI never shows an option the role can't use.
@@ -110,6 +119,11 @@ function nonEmptyString(v: unknown): v is string {
 export class SessionService {
   private readonly key = HUG_SESSION_KEY;
   private readonly channel = 'hug-session-change';
+  /** Monotonic stamp of the session state an in-flight {@link hydrate} was
+   *  started against. Bumped by every external change (same-document broadcast,
+   *  cross-tab write); a probe whose stamp no longer matches is stale and must
+   *  not write its result. */
+  private generation = 0;
   readonly session = signal<HugSession | null>(this.load());
   readonly loggedIn = computed(() => this.session() !== null);
 
@@ -145,7 +159,11 @@ export class SessionService {
       window.addEventListener(this.channel, () => this.onBroadcast());
       // A cross-TAB write: the sibling tab already hydrated and login-ui wrote
       // the mirror, so re-reading the mirror suffices (no fetch in a background tab).
-      window.addEventListener('storage', (e) => { if (e.key === this.key) this.session.set(this.load()); });
+      window.addEventListener('storage', (e) => {
+        if (e.key !== this.key) return;
+        this.generation++; // a probe started before this write is stale
+        this.session.set(this.load());
+      });
       // Bootstrap: the signal is already seeded synchronously from the mirror
       // (field initializer above); now confirm/refresh it against /bff/session so
       // a role changed since the mirror was written — or a cookie-only session
@@ -174,8 +192,16 @@ export class SessionService {
    * dark 503), or an unusable body — it falls back to the mirror and returns
    * null. e2e harnesses / mock stacks seed the mirror with no live BFF, so a
    * failed probe must NEVER clobber a seeded session.
+   *
+   * SUPERSESSION: the probe is stamped with the current {@link generation} when
+   * it starts. If the session changed underneath it while the request was in
+   * flight (a sign-out broadcast, a cross-tab write, a newer probe), the stamp
+   * is stale and the result is DISCARDED — both the 200 (which would resurrect
+   * a signed-out session with the not-yet-expired cookie) and the failure
+   * fallback (which would restore a stale mirror over a newer probe's roles).
    */
   async hydrate(): Promise<HugSession | null> {
+    const gen = ++this.generation;
     try {
       const res = await sessionFetcher.fetch(SESSION_ENDPOINT, {
         credentials: 'include',
@@ -186,10 +212,12 @@ export class SessionService {
       if (!body || !Array.isArray(body.roles)) {
         throw new Error('session body missing roles');
       }
+      if (gen !== this.generation) return null; // superseded while in flight
       const next = this.fromBody(body, body.roles);
       this.session.set(next);
       return next;
     } catch {
+      if (gen !== this.generation) return null; // superseded while in flight
       // A failed probe (offline, dark user-bff, expired cookie, malformed body)
       // must never wipe a seeded/known session — re-read the mirror instead.
       this.session.set(this.load());
@@ -216,6 +244,10 @@ export class SessionService {
 
   private onBroadcast(): void {
     const mirror = this.load();
+    // Whatever a probe started BEFORE this broadcast would report is now stale:
+    // on a sign-out its 200 must not resurrect the session, on a sign-in the
+    // fresh probe below supersedes it.
+    this.generation++;
     this.session.set(mirror);
     if (mirror) void this.hydrate();
   }
@@ -256,6 +288,9 @@ export class SessionService {
     }
     localStorage.removeItem(this.key);
     this.session.set(null);
+    // dispatchEvent is synchronous: onBroadcast() runs here, bumps the
+    // generation and so retires any probe still in flight before a microtask
+    // could let it land on the signed-out state.
     this.broadcast();
   }
 

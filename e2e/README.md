@@ -49,6 +49,17 @@ Surfaces + role gates are grounded against the real components
 - `canModerate` = roles ∋ `admin` **or** (`mod` **and** `forum`)  — a bare mod is *not* a forum moderator
 - `ownsPost`    = roles ∋ `admin` **or** `session.id === post.authorSubject`
 
+Session-seeding coupling (issue #3 item 2): `SessionService` now re-reads the
+authoritative `GET /bff/session` on construction and on every
+`hug-session-change` broadcast that leaves a `hug.session` mirror behind, and
+the cookie's roles WIN over the mirror when that probe answers 200. The
+mirror-rewrite step (`"... has their roles rewritten to ..."` in
+`features/steps/multiuser-steps.ts`) therefore only holds for identities that
+`have a seeded session` — no `bff_` cookie, so the probe 401s and the rewritten
+mirror stands. Do not combine that step with a REAL login in one scenario: the
+cookie's real roles would override the rewrite on the very broadcast the step
+fires.
+
 ## Run offline (what CI does — compile + discover, no browser, no cluster)
 
 ```bash

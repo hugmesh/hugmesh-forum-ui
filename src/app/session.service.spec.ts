@@ -44,6 +44,21 @@ async function until(cond: () => boolean, turns = 50): Promise<void> {
   for (let i = 0; i < turns && !cond(); i++) await new Promise((r) => setTimeout(r, 0));
 }
 
+/** A hand-resolved promise: lets a spec hold a /bff/session probe IN FLIGHT
+ *  while something else (a sign-out broadcast, a newer probe) changes the
+ *  session underneath it, then answer the stale probe on cue. */
+function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
+  let resolve!: (v: T) => void;
+  let reject!: (e: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+/** The front door's 200 for the signed-in admin used by the race specs. */
+function aliceAdmin(): Response {
+  return okJson({ id: 'google:alice@gmail.com', provider: 'oidc', handle: 'alice', registrationComplete: true, roles: ['admin'] });
+}
+
 describe('SessionService', () => {
   let service: SessionService;
   let fetchSpy: jasmine.Spy;
@@ -285,13 +300,107 @@ describe('SessionService', () => {
     });
   });
 
+  // ── A probe already IN FLIGHT when the session changes underneath it ────────
+
+  describe('hydrate() supersession — a probe in flight across a session change', () => {
+    it('a probe in flight when a sign-out broadcast lands is DISCARDED: its 200 must not resurrect the session', async () => {
+      // The second door of the sign-out race: the broadcast guard above stops a
+      // NEW probe, but a probe started at construction (or by an earlier
+      // broadcast) is still pending when login-ui removes the mirror. login-ui's
+      // sessionOut is fire-and-forget, so that probe is answered 200 with the
+      // still-live cookie a tick later.
+      localStorage.setItem(HUG_SESSION_KEY, JSON.stringify(makeSession({ roles: ['admin'] })));
+      const probe = deferred<Response>();
+      fetchSpy.calls.reset();
+      fetchSpy.and.callFake(() => probe.promise);
+      const fresh = TestBed.runInInjectionContext(() => new SessionService());
+      expect(fresh.isAdmin()).withContext('seeded synchronously from the mirror').toBeTrue();
+      expect(fetchSpy).withContext('construction probe is in flight').toHaveBeenCalledTimes(1);
+
+      // login-ui signs out: mirror gone + broadcast, while our probe is pending.
+      localStorage.removeItem(HUG_SESSION_KEY);
+      window.dispatchEvent(new Event('hug-session-change'));
+      expect(fresh.session()).toBeNull();
+
+      // Now the stale probe is answered — with the cookie that was still alive.
+      probe.resolve(aliceAdmin());
+      await settle();
+
+      expect(fresh.session()).withContext('a stale probe must not resurrect a signed-out session').toBeNull();
+      expect(fetchSpy).withContext('the sign-out broadcast itself started no probe').toHaveBeenCalledTimes(1);
+    });
+
+    it('a probe superseded by a sign-in broadcast cannot overwrite the NEWER probe\'s roles with its stale 200', async () => {
+      localStorage.setItem(HUG_SESSION_KEY, JSON.stringify(makeSession({ roles: ['user'] })));
+      const slow = deferred<Response>();
+      fetchSpy.and.callFake(() => slow.promise);
+      const fresh = TestBed.runInInjectionContext(() => new SessionService()); // probe #1 pending
+
+      // A role grant lands: login-ui rewrites the mirror and broadcasts; probe #2
+      // (fast) answers with the granted role.
+      fetchSpy.and.callFake(async () => okJson({ id: 'google:alice@gmail.com', roles: ['user', 'admin'], registrationComplete: true }));
+      localStorage.setItem(HUG_SESSION_KEY, JSON.stringify(makeSession({ roles: ['user', 'admin'] })));
+      window.dispatchEvent(new Event('hug-session-change'));
+      await until(() => fresh.isAdmin());
+      expect(fresh.isAdmin()).toBeTrue();
+
+      // Probe #1 finally answers with the PRE-grant truth.
+      slow.resolve(okJson({ id: 'google:alice@gmail.com', roles: ['user'], registrationComplete: true }));
+      await settle();
+
+      expect(fresh.isAdmin()).withContext('the older probe must not roll the newer roles back').toBeTrue();
+    });
+
+    it('a superseded probe that FAILS does not restore the mirror over the newer probe\'s roles', async () => {
+      // The failure fallback re-reads the mirror; if the stale probe were allowed
+      // to do that AFTER a newer probe landed, a mirror that lags the server
+      // (login-ui wrote ['user']; the server already says admin) would win.
+      localStorage.setItem(HUG_SESSION_KEY, JSON.stringify(makeSession({ roles: ['user'] })));
+      const slow = deferred<Response>();
+      fetchSpy.and.callFake(() => slow.promise);
+      const fresh = TestBed.runInInjectionContext(() => new SessionService()); // probe #1 pending
+
+      fetchSpy.and.callFake(async () => okJson({ id: 'google:alice@gmail.com', roles: ['user', 'admin'], registrationComplete: true }));
+      window.dispatchEvent(new Event('hug-session-change')); // mirror still ['user']; probe #2 says admin
+      await until(() => fresh.isAdmin());
+      expect(fresh.isAdmin()).toBeTrue();
+
+      slow.reject(new Error('network reset'));
+      await settle();
+
+      expect(fresh.isAdmin()).withContext('a stale failure must not fall back to the lagging mirror').toBeTrue();
+    });
+
+    it('a probe in flight when a CROSS-TAB sign-out (storage event) lands is discarded too', async () => {
+      // Another tab's login-ui cleared the mirror; this tab adopts the sign-out
+      // from the storage event (no fetch in a background tab) — and a probe it
+      // already had in flight must not resurrect the session with a 200.
+      localStorage.setItem(HUG_SESSION_KEY, JSON.stringify(makeSession({ roles: ['admin'] })));
+      const probe = deferred<Response>();
+      fetchSpy.and.callFake(() => probe.promise);
+      const fresh = TestBed.runInInjectionContext(() => new SessionService());
+      expect(fresh.isAdmin()).toBeTrue();
+
+      localStorage.removeItem(HUG_SESSION_KEY);
+      window.dispatchEvent(new StorageEvent('storage', { key: HUG_SESSION_KEY, oldValue: '{}', newValue: null }));
+      expect(fresh.session()).withContext('cross-tab sign-out adopted from the storage event').toBeNull();
+
+      probe.resolve(aliceAdmin());
+      await settle();
+
+      expect(fresh.session()).withContext('a stale probe must not resurrect a cross-tab sign-out').toBeNull();
+    });
+  });
+
   // ── Real logout, in the right ORDER ────────────────────────────────────────
 
   describe('clear() — the real logout', () => {
-    it('POSTs /bff/sessionOut with the cookie BEFORE dropping the mirror, and stays signed out afterwards', async () => {
+    it('POSTs /bff/sessionOut and AWAITS it before dropping the mirror or broadcasting — a sibling re-reading /bff/session on the broadcast finds the cookie already dead', async () => {
       // A STATEFUL server: /bff/session 200s while the session is alive and
-      // 401s once sessionOut has landed. (A "fetch was called" assertion alone
-      // would pass a fire-and-forget post that still loses the race.)
+      // 401s once sessionOut has landed. The server takes a ROUND TRIP to expire
+      // the row, so `alive` flips after a macrotask, not synchronously inside the
+      // call: a fire-and-forget post has the right CALL order and still loses
+      // the race, and only the missing `await` distinguishes the two.
       let alive = true;
       let mirrorAtSessionOut: string | null = 'unset';
       fetchSpy.and.callFake(async (url: string, init?: RequestInit) => {
@@ -299,6 +408,7 @@ describe('SessionService', () => {
           expect(init?.method).toBe('POST');
           expect(init?.credentials).toBe('include');
           mirrorAtSessionOut = localStorage.getItem(HUG_SESSION_KEY);
+          await new Promise((r) => setTimeout(r, 0)); // the server's round trip
           alive = false;
           return okJson({ loggedOut: true });
         }
@@ -313,10 +423,23 @@ describe('SessionService', () => {
       await service.hydrate();
       expect(service.isAdmin()).toBeTrue();
 
-      await service.clear();
-      await settle();
+      // A sibling instance (the host shell hydrates on every broadcast) re-reads
+      // /bff/session the instant our sign-out broadcast lands. It must find the
+      // cookie DEAD — that is the whole point of awaiting sessionOut.
+      const siblingSaw: number[] = [];
+      const sibling = () => {
+        void sessionFetcher.fetch(SESSION_ENDPOINT, { credentials: 'include' }).then((r) => siblingSaw.push(r.status));
+      };
+      window.addEventListener('hug-session-change', sibling);
+      try {
+        await service.clear();
+        await until(() => siblingSaw.length > 0);
+      } finally {
+        window.removeEventListener('hug-session-change', sibling);
+      }
 
       expect(mirrorAtSessionOut).withContext('the server session is expired FIRST, while the mirror still exists').not.toBeNull();
+      expect(siblingSaw).withContext('the sibling saw a LIVE cookie on the sign-out broadcast').toEqual([401]);
       expect(localStorage.getItem(HUG_SESSION_KEY)).toBeNull();
       expect(service.session()).withContext('the broadcast our own clear() fires cannot restore the session').toBeNull();
     });
