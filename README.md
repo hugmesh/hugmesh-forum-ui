@@ -204,6 +204,43 @@ All of these are **UI convenience / defense-in-depth only**.
 `hugmesh-forum-bff-api` and the phpBB extension are the real, server-side
 gates; every write re-checks the role and ownership server-side.
 
+### Step-up (MFA) on moderation
+
+`hugmesh-forum-bff-api` wraps its two privileged path groups —
+`/bff/forum/moderation/**` (the topic lock/unlock this remote calls) and
+`/bff/forum/admin/**` — in an MFA step-up gate (`SecurityConfig.stepUp`, PR #11).
+While the platform flag `app.mfa.enabled` is off (today's org-wide default) the
+gate is a no-op; once it is on, those paths additionally require a **fresh second
+factor**: the `MFA_SATISFIED` authority derived from the `mfa_satisfied_at` claim
+that the platform's MFA challenge (`POST /bff/mfa/challenge`) stamps on the
+caller's own session. There is no token leg on the forum gate — a plain retry of
+the same call succeeds once the session is stamped.
+
+This remote's half of that contract lives in `src/app/step-up.ts`:
+
+- **Detection** — `ForumService.moderateTopic` rejects with a typed
+  `StepUpRequiredError` when the BFF answers with the platform's step-up
+  contract: a `403` carrying `X-Step-Up-Required: X-<flavour>-StepUp`, or the
+  legacy `"requires step-up"` phrase in the body. It applies the same contract
+  as `hugmesh-admin-ui`'s `mfa/step-up-error.ts` (identical header name, phrase
+  pattern and 403-only rule; it reads Angular's `HttpErrorResponse` where
+  admin-ui reads its own `BffHttpError`). An ordinary 403 (a `mod` without
+  the `forum` role, the gateway's `X-Route-Denied`) matches neither and surfaces
+  exactly as before — a routine denial must never offer an MFA prompt.
+- **Offer** — `TopicDetailComponent` answers a `StepUpRequiredError` with an
+  inline notice and a link to the platform's challenge screen,
+  `/login/mfa/challenge?returnTo=<this topic>` (hugmesh-login-ui, mounted by the
+  host at `/login`). Nothing is performed; after verifying, login-ui navigates
+  back and the moderator re-issues the action. The route is an absolute host
+  route by design, so the standalone dev shell (`ng serve forum`), which mounts
+  no login remote, cannot follow it.
+
+**Honest gap (tracked on `hugmesh-forum-bff-api`):** the forum BFF's MFA denial
+is Spring Security's default access-denied today — `403`, empty body, no signal
+header — so the detector cannot fire against it until that BFF emits the
+structured `X-Step-Up-Required` signal. The UI half is wired and pinned by unit
+tests so the offer appears the moment the BFF half lands, and never before.
+
 ## Forum profile: the platform's user page, embedded
 
 `profile/:subject` does **not** render a phpBB profile/memberlist page (those
@@ -252,13 +289,35 @@ cookie and the BFF returns 401.
 
 Separately, `SessionService` holds a **UI-display** session — `id`, `label`,
 `provider`, `roles`, `registrationComplete` (see `HugSession`; no token field
-of any kind) — as a signal in the shared `hug.session` `localStorage` key,
-re-read on a same-document broadcast event and on cross-tab `storage` events
-so every remote and the host stay in sync. This is what drives `canPost` /
-`canModerate` / `ownsPost` and the nav; it carries no credential the gateway
-would accept, so a tampered copy grants no server-side access. The BFF base
-URL is a runtime global, **`__HUG_FORUM_URL__`** (default `''` = same origin →
-`/bff/forum`).
+of any kind) — as a signal. It is fed from two sources:
+
+- **The authoritative cookie session** — `GET /bff/session`
+  (`SESSION_ENDPOINT`, same-origin; the front door routes it to user-bff's
+  `SsoAuthController.session`, body `{id, provider, handle, registrationComplete,
+  roles}`). `SessionService.hydrate()` reads it on construction and on every
+  same-document sign-in / role-change broadcast, so a role granted or revoked
+  mid-session is reflected without a re-login. `roles` is load-bearing (an
+  absent field is a malformed body; an empty array is a revocation); identity
+  fields fall back to the last-known values. `hydrate()` never writes
+  `localStorage` and never broadcasts.
+- **The `hug.session` `localStorage` mirror** — the fleet-wide legacy session
+  source, of which `hugmesh-login-ui` is the **sole writer** and this remote is
+  a **reader only**. It seeds the signal synchronously (no anonymous flash) and
+  is the fallback whenever the probe fails: offline, a mock stack with no BFF,
+  an e2e-seeded session, an expired cookie, or user-bff's dark `503`. Cross-tab
+  `storage` events re-read it.
+
+A same-document broadcast whose mirror is now **empty** is a sign-out and is
+adopted immediately *without* a re-hydrate: re-reading `/bff/session` at that
+instant could still see a live cookie and put the session straight back (the
+host-shell PR #14 defect). `SessionService.clear()` — not wired by this remote's
+own UI, the host owns sign-out — awaits `POST /bff/sessionOut` *before* dropping
+local state for the same reason.
+
+This is what drives `canPost` / `canModerate` / `ownsPost` and the nav; it
+carries no credential the gateway would accept, so a tampered copy grants no
+server-side access. The BFF base URL is a runtime global,
+**`__HUG_FORUM_URL__`** (default `''` = same origin → `/bff/forum`).
 
 ## Sanitization
 
@@ -422,16 +481,19 @@ lookup error) renders exactly as a plain post.
   Matrix DM, an Akkoma feed, a phpBB forum channel, and email are the planned
   channels; the forum channel specifically is the natural surface for
   forum-targeted notifications and is roadmap for this repository.
-- Step-up multi-factor authentication (WebAuthn + TOTP + recovery codes) on
-  sensitive write/moderation affordances is planned at the platform level.
-  Once shipped, forum write/moderate actions are intended to sit behind that
-  step-up; today the gate here is affordance-level only, and the BFF/phpBB
-  remains the real server-side gate.
-- Migrating the shared session out of `localStorage` is a known cross-repo
-  backlog item. Even with the current HttpOnly session cookie, the
-  platform-wide direction is to move the shared UI-display session (see [Auth
-  & token model](#auth--token-model-no-login-ui)) to something other than
-  `localStorage`.
+- Step-up multi-factor authentication on moderation: the BFF gate is merged
+  (forum-bff PR #11, live once `app.mfa.enabled` flips) and this remote detects
+  the platform's step-up contract and offers the challenge (see [Step-up (MFA)
+  on moderation](#step-up-mfa-on-moderation)). Still open, tracked on issue #3:
+  the forum BFF emitting the structured `X-Step-Up-Required` signal on an MFA
+  denial (without it the detector cannot fire), and an inline challenge with a
+  blind retry instead of the navigate-away link.
+- Migrating the shared session out of `localStorage`: this remote now hydrates
+  from the authoritative `GET /bff/session` and only reads the `hug.session`
+  mirror as seed/fallback (see [Auth & token model](#auth--token-model-no-login-ui)).
+  Dropping the mirror entirely is fleet-wide (login-ui is its sole writer, nine
+  remotes read it) and waits on the platform's cookie-mode flip and an e2e
+  harness that seeds a real cookie instead of the mirror — tracked on issue #3.
 
 ## Getting started
 

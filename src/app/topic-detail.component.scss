@@ -11,6 +11,28 @@
   margin-block-start: 0.4rem;
 }
 
+/* The step-up offer: a bordered notice in the same surface as a post, sitting
+ * under the live region so screen readers hear the alert first. */
+.topic__stepup {
+  background: var(--forum-surface);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  padding: 0.85rem 1rem;
+  margin-block: 0.5rem 1rem;
+}
+
+.topic__stepup-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.topic__stepup-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-block-start: 0.5rem;
+}
+
 .forum-muted {
   color: var(--forum-text-muted);
 }

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ForumAnnouncementsService, forumAnnouncementsFetcher } from './forum-announcements.service';
-import { SessionService, HugSession } from './session.service';
+import { SessionService, HugSession, sessionFetcher } from './session.service';
 import { ForumAnnouncement } from './forum-announcement.model';
 
 function session(over: Partial<HugSession> = {}): HugSession {
@@ -33,6 +33,9 @@ describe('ForumAnnouncementsService', () => {
 
   beforeEach(() => {
     localStorage.clear();
+    // The real SessionService probes GET /bff/session on construction; no BFF
+    // here, so it falls back to the mirror set() writes.
+    spyOn(sessionFetcher, 'fetch').and.rejectWith(new Error('offline'));
     TestBed.configureTestingModule({ providers: [ForumAnnouncementsService, SessionService] });
     sess = TestBed.inject(SessionService);
     service = TestBed.inject(ForumAnnouncementsService);

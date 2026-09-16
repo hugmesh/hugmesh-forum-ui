@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 import { ForumService, ForumPost, TopicDetail } from './forum.service';
@@ -25,6 +25,7 @@ import {
 import { insertAtCursor, stickerBodyUrl, stickerToken, transformStickerTokens } from './stickers';
 import { isOwnerBlindImgRef } from './character-avatar';
 import { StickerPickerComponent } from './sticker-picker.component';
+import { MFA_CHALLENGE_ROUTE, StepUpRequiredError } from './step-up';
 
 /** Read-aloud cap: at most this many characters are handed to speechSynthesis
  *  per activation. Rationale: a pathological (or merely huge) post would
@@ -80,6 +81,9 @@ export const speechAccess = {
 export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy {
   private readonly forum = inject(ForumService);
   private readonly route = inject(ActivatedRoute);
+  /** The HOST's router under federation — its `url` is the host-level URL of this
+   *  topic, which is what the platform's MFA challenge must return to. */
+  private readonly router = inject(Router);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly vn = inject(VnProfileService);
   private readonly host = inject(ElementRef<HTMLElement>);
@@ -94,6 +98,13 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
   readonly replyBody = signal('');
   readonly busy = signal(false);
   readonly outcome = signal<{ kind: 'status' | 'alert'; text: string } | null>(null);
+
+  /** A moderation action the BFF refused with the platform's step-up contract
+   *  ({@link StepUpRequiredError}), or null. While set, the template offers the
+   *  platform's MFA challenge ({@link MFA_CHALLENGE_ROUTE}) with a `returnTo`
+   *  back to this topic; the moderator re-issues the action after verifying. */
+  readonly stepUp = signal<{ action: 'lock' | 'unlock' } | null>(null);
+  readonly mfaChallengeRoute = MFA_CHALLENGE_ROUTE;
 
   /** Per-post inline edit state (postId → draft body). */
   readonly editingId = signal<number | null>(null);
@@ -203,6 +214,11 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
    * POST /bff/forum/moderation/topics/{id}; on success updates the local
    * topic.locked so the reply form appears/disappears WITHOUT a reload and
    * announces the outcome in the live region. The BFF is the real gate.
+   *
+   * A {@link StepUpRequiredError} — the BFF's MFA step-up gate refusing the
+   * write with the platform's step-up contract — is NOT a generic failure: it
+   * sets {@link stepUp} so the template offers the platform's challenge screen.
+   * The topic state is left untouched (nothing was performed).
    */
   async toggleLock(): Promise<void> {
     const d = this.detail();
@@ -210,15 +226,35 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
     const next = !d.topic.locked;
     this.busy.set(true);
     this.outcome.set(null);
+    this.stepUp.set(null);
     try {
       await this.forum.moderateTopic(d.topic.id, next ? 'lock' : 'unlock');
       this.detail.set({ ...d, topic: { ...d.topic, locked: next } });
       this.outcome.set({ kind: 'status', text: next ? 'Topic locked.' : 'Topic unlocked.' });
-    } catch {
-      this.outcome.set({ kind: 'alert', text: 'Could not update the topic lock. Please try again.' });
+    } catch (e) {
+      if (e instanceof StepUpRequiredError) {
+        this.stepUp.set({ action: next ? 'lock' : 'unlock' });
+        this.outcome.set({
+          kind: 'alert',
+          text: 'This moderation action needs a fresh second-factor check before the server will accept it.',
+        });
+      } else {
+        this.outcome.set({ kind: 'alert', text: 'Could not update the topic lock. Please try again.' });
+      }
     } finally {
       this.busy.set(false);
     }
+  }
+
+  /** The host-level URL the MFA challenge navigates back to once the session is
+   *  stamped — this very topic, so the moderator can re-issue the action. */
+  mfaReturnTo(): string {
+    return this.router.url;
+  }
+
+  /** Dismiss the step-up offer without verifying (nothing was performed). */
+  dismissStepUp(): void {
+    this.stepUp.set(null);
   }
 
   /**

@@ -3,6 +3,7 @@ import { Injectable, InjectionToken, computed, inject } from '@angular/core';
 import { SessionService } from './session.service';
 import { ForumService as GenForumService } from './api/services/forum.service';
 import { ForumModerationService as GenForumModerationService } from './api/services/forum-moderation.service';
+import { toStepUpError } from './step-up';
 
 /** Base URL of the forum BFF. The fe-gateway proxies same-origin /bff/forum/**
  *  to hugmesh-forum-bff-api (which wraps the headless phpBB backend), so the
@@ -244,6 +245,15 @@ export class ForumService {
    * phpBB extension (whose doc set is hide/lock/delete). We surface only the
    * reversible lock/unlock verbs in the UI.
    *
+   * <p><b>Step-up.</b> `/bff/forum/moderation/**` is one of the two forum path
+   * groups the BFF wraps in its MFA step-up gate (`SecurityConfig.stepUp`, live
+   * once the platform flips `app.mfa.enabled`). A refusal carrying the platform's
+   * step-up contract ({@link toStepUpError}: the `X-Step-Up-Required` signal on a
+   * 403, or the legacy "requires step-up" phrase) rejects with a typed
+   * {@link StepUpRequiredError} so the caller can offer the MFA challenge; every
+   * other failure — a routine role 403 included — rejects with the ORIGINAL
+   * transport error, exactly as before.
+   *
    * @param topicId - The topic to moderate.
    * @param action - `'lock'` to disable new replies, `'unlock'` to re-enable.
    * @param reason - Optional moderator note recorded in the forum audit trail.
@@ -251,7 +261,10 @@ export class ForumService {
   moderateTopic(topicId: number, action: 'lock' | 'unlock', reason?: string): Promise<void> {
     return this.genMod
       .moderateForumTopic({ id: topicId, body: reason ? { action, reason } : { action } })
-      .then(() => undefined);
+      .then(() => undefined)
+      .catch((e: unknown) => {
+        throw toStepUpError(e) ?? e;
+      });
   }
 
   /** Whether the current caller owns this post (post.authorSubject == jwt sub)
