@@ -89,5 +89,27 @@ hugmesh-generator's `make stack-seed` (`$E2E_CREDENTIALS_FILE`, or a
 password — if nothing resolves, the suite throws naming `make stack-seed`
 rather than silently authenticating with a guessable default.
 
+**Two things a live run needs that this suite does not provide** (measured
+2026-09-23 against the generator's compose stack at `https://localhost:8488`):
+
+- **The personas here are not the ones the generator seeds.** `POST /bff/login`
+  answered `401 "The user: hugmesh/<name> doesn't exist"` for `admin`,
+  `forum-mod`, `forum-user`, `forum-user-2`, `bare-mod`, `plain-user` and
+  `superadmin` from this roster, while the
+  generator's own personas (`e2e-admin`, `e2e-mod`, `e2e-user`, `e2e-forum`,
+  `e2e-superadmin` — `tests/stack/seed-e2e.sh`, `tests/e2e-extra-personas.sh`)
+  logged in. Nothing in hugmesh-generator seeds this roster's names, so every
+  `"X" is logged in` row needs those accounts provisioned (or a name mapping) first.
+  There is also no seeded persona holding both `ROLE_MOD` and `ROLE_FORUM`.
+- **A seeded session alone cannot load this remote behind the real gateway.**
+  `/social/forum/remoteEntry.json` answered `401` without a `bff_` cookie (the
+  fe-gateway row for `/social/forum/**` is `ROLE_FORUM`), so a `has a seeded
+  session` row — which writes only the `hug.session` mirror — needs a real session
+  cookie in the same browser context before the host shell can mount the forum.
+
+`login()` in `tests/helpers/roles.ts` now drives login-ui's real selector contract
+(`data-testid` `login-username` / `login-password` / `login-submit`). The earlier
+`formControlName` / `.login-btn` selectors matched nothing on the current login form.
+
 Per-step PNGs are attached to the HTML report (`results/html`) via the
 `AfterStep` hook in `features/support/fixtures.ts`; trace/video retain on failure.

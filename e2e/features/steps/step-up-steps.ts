@@ -27,6 +27,14 @@ function pageOf(username: string) {
  *  "sent exactly once" (the offer must not itself retry). */
 const modWrites = new Map<number, number>();
 
+/** Every request each page made for login-ui's remote entry — the oracle for the
+ *  decision-35 consumer (box 2 of #3): the topic page must fetch the HARDCODED
+ *  `/login/remoteEntry.json` when it offers the challenge. Keyed by persona. */
+const loginEntryRequests = new Map<string, string[]>();
+
+/** The login remote entry, as decision 35 hardcodes it. Matches any origin. */
+const LOGIN_REMOTE_ENTRY_GLOB = '**/login/remoteEntry.json';
+
 /** The last capturing fetch: status + the step-up signal header, or null. */
 const captured = { status: 0, signal: null as string | null };
 
@@ -47,6 +55,14 @@ Given('the forum serves the unlocked topic {int} to {string}', async ({ user }, 
       bodyHtml: '<p>Opening post (mocked forum-bff).</p>', createdAt: '2026-09-23T00:00:00Z', editedAt: null,
     }],
   };
+  // Watch for the decision-35 load from the first navigation on (listeners are
+  // per page, so a fresh scenario starts from an empty list).
+  loginEntryRequests.set(username, []);
+  page.on('request', (req) => {
+    if (new URL(req.url()).pathname === '/login/remoteEntry.json') {
+      loginEntryRequests.get(username)?.push(req.url());
+    }
+  });
   await page.route(`**/bff/forum/topics/${id}**`, async (route) => {
     const req = route.request();
     if (req.method() !== 'GET' || !new URL(req.url()).pathname.endsWith(`/bff/forum/topics/${id}`)) {
@@ -89,6 +105,13 @@ Given('the forum-bff will refuse the next moderation write on topic {int} with a
   const username = [...pageRegistry.keys()].pop();
   if (!username) throw new Error('No page registered — add a session step first.');
   await mockModerationWrite(username, id, { status: 403, body: {} });
+});
+
+Given('the login remote entry cannot be fetched by {string}', async ({ user }, username: string) => {
+  // The decided fallback context (decision 35): no federation runtime can reach
+  // login-ui — a moved manifest row, the standalone dev shell, a network error.
+  const page = pageOf(user(username).username);
+  await page.route(LOGIN_REMOTE_ENTRY_GLOB, (route) => route.abort('failed'));
 });
 
 // ── Driving the page ───────────────────────────────────────────────────────
@@ -144,6 +167,35 @@ Then('{string} sees the plain lock failure alert', async ({ user }, username: st
   const outcome = page.locator('.topic__outcome');
   await expect(outcome).toContainText('Could not update the topic lock', { timeout: 15_000 });
   await expect(outcome).not.toContainText(/second-factor/i);
+});
+
+Then('{string} sees the title of topic {int}', async ({ user }, username: string, id: number) => {
+  // The mocked topic rendered — a positive, settled page before any absence check.
+  const page = pageOf(user(username).username);
+  await expect(page.locator('.topic__head h1')).toHaveText(`Step-up probe topic ${id}`, { timeout: 15_000 });
+});
+
+Then('the page of {string} requested the login remote entry {string}', async ({ user }, username: string, path: string) => {
+  // Decision 35 = A: ONE hardcoded path, not discovered, not configured.
+  expect(path).toBe('/login/remoteEntry.json');
+  const u = user(username).username;
+  await expect
+    .poll(() => (loginEntryRequests.get(u) ?? []).length, {
+      message: `the topic page never requested ${path} after the step-up refusal`,
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0);
+});
+
+Then('{string} sees the federated login-ui MFA challenge in place', async ({ user }, username: string) => {
+  // login-ui's exposed MfaStepUpComponent (`./mfa-step-up`, login-ui PR #24):
+  // ONLY its `mfa-challenge-*` testids, so today's ?returnTo= link cannot pass
+  // this. It makes no /bff/mfa call on mount, so it renders even while MFA is dark.
+  const page = pageOf(user(username).username);
+  await expect(page.locator('[data-testid="mfa-challenge-view"]')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('[data-testid="mfa-challenge-intro"]')).toBeVisible();
+  // Mounted in place: the topic is still on screen, not a navigation to /login.
+  await expect(page).toHaveURL(/\/topics\/\d+/);
 });
 
 Then('the moderation write on topic {int} was sent exactly once', async ({}, id: number) => {
