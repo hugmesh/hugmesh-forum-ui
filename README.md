@@ -14,9 +14,10 @@ users see — the browser never talks to phpBB directly.
 It is structurally similar to its sibling remote
 [hugmesh-mastodon-ui](https://github.com/hugmesh/hugmesh-mastodon-ui)
 (the same `federation-base.js`, the same native-federation application builder,
-the same Dockerfile/nginx/accessibility baseline), and shares its `SessionService`
-implementation with [hugmesh-mod-ui](https://github.com/hugmesh/hugmesh-mod-ui)
-so role signals stay consistent across the platform. Other social surfaces ship
+the same Dockerfile/nginx/accessibility baseline). Its `SessionService` started as a
+copy of [hugmesh-mod-ui](https://github.com/hugmesh/hugmesh-mod-ui)'s and has since
+diverged: this one also reads `GET /bff/session`; mod-ui's reads only the
+`hug.session` mirror. Other social surfaces ship
 as their own remotes — matrix, mastodon, login, admin, mod, user — each in its
 own repository under the [hugmesh](https://github.com/hugmesh) organization.
 
@@ -58,17 +59,18 @@ own repository under the [hugmesh](https://github.com/hugmesh) organization.
   `/bff/forum/**` call is sent with credentials included so the HttpOnly
   session cookie rides along, and the gateway exchanges it for a server-side
   bearer token. See [Auth & token model](#auth--token-model-no-login-ui).
-- nginx emits a full response header set, including a real
-  **Content-Security-Policy** (`default-src`/`script-src 'self'`, `object-src
+- nginx emits a full response header set, including a real, nonce-based
+  **Content-Security-Policy** (`script-src 'self' 'nonce-…' blob:`, `object-src
   'none'`, `frame-ancestors 'none'`, …) as a backstop to the DOMPurify pass,
   alongside `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and
   HSTS. See [Deployment](#deployment).
-- CI runs a four-stage GitLab pipeline (`test` → `e2e` → `build:image` →
-  `pentest`); there are no GitHub Actions in this repository — the GitHub
-  mirror is pull-mirrored into an internal GitLab instance. See
+- CI runs a four-stage GitLab pipeline (`test` → `e2e` → `build` →
+  `pentest`); the GitHub repository is pull-mirrored into an internal GitLab
+  instance. The only GitHub Actions workflow is `release.yml`, which runs by
+  hand (`workflow_dispatch`) and pushes the image to GHCR. See
   [Deployment](#deployment).
 - A Playwright + Gherkin (BDD) end-to-end harness lives under `e2e/`, alongside
-  the Karma/JUnit unit-test reporter used in CI. The Karma suite (170+ specs)
+  the Karma/JUnit unit-test reporter used in CI. The Karma suite (about 240 specs; 241 `it(` blocks in `src/`)
   passes with `npm test`, and `ng build forum` builds clean. A 1-in-3 flake in
   the VN specs in `topic-detail.component.spec.ts` was diagnosed and fixed on
   2026-08-14 — `topic-detail.component.ts` now calls `markForCheck()` on the
@@ -175,7 +177,7 @@ embedded profile fragment and the VN character/sticker endpoints.
 | --- | --- | --- |
 | `''` | `ForumIndexComponent` | the announcements banner + category list + "New topic" / "Search" links |
 | `categories/:id` | `TopicsListComponent` | paginated topics in a category (sort: latest / oldest / replies; prev/next pager) |
-| `topics/:id` | `TopicDetailComponent` | the topic + ordered posts + inline reply form + owner/admin edit-delete |
+| `topics/:id` | `TopicDetailComponent` | the topic + ordered posts + inline reply form; edit/delete for the post's owner or a moderator; lock/unlock for a moderator |
 | `create-topic` | `CreateTopicComponent` | new topic (category + Markdown title/body + live preview) |
 | `search` | `ForumSearchComponent` | topic/post search |
 | `profile/:subject` | `ForumProfileComponent` | embeds the platform's federated user-profile fragment for the poster |
@@ -209,7 +211,7 @@ gates; every write re-checks the role and ownership server-side.
 `hugmesh-forum-bff-api` wraps its two privileged path groups —
 `/bff/forum/moderation/**` (the topic lock/unlock this remote calls) and
 `/bff/forum/admin/**` — in an MFA step-up gate (`SecurityConfig.stepUp`, PR #11).
-While the platform flag `app.mfa.enabled` is off (today's org-wide default) the
+While the flag `app.mfa.enabled` is off (its default in the BFF) the
 gate is a no-op; once it is on, those paths additionally require a **fresh second
 factor**: the `MFA_SATISFIED` authority derived from the `mfa_satisfied_at` claim
 that the platform's MFA challenge (`POST /bff/mfa/challenge`) stamps on the
@@ -220,7 +222,8 @@ This remote's half of that contract lives in `src/app/step-up.ts`:
 
 - **Detection** — `ForumService.moderateTopic` rejects with a typed
   `StepUpRequiredError` when the BFF answers with the platform's step-up
-  contract: a `403` carrying `X-Step-Up-Required: X-<flavour>-StepUp`, or the
+  contract: a `403` carrying `X-Step-Up-Required: X-<flavour>-StepUp` (the forum
+  BFF's flavour is `X-Forum-StepUp`), or the
   legacy `"requires step-up"` phrase in the body. It applies the same contract
   as `hugmesh-admin-ui`'s `mfa/step-up-error.ts` (identical header name, phrase
   pattern and 403-only rule; it reads Angular's `HttpErrorResponse` where
@@ -235,11 +238,11 @@ This remote's half of that contract lives in `src/app/step-up.ts`:
   route by design, so the standalone dev shell (`ng serve forum`), which mounts
   no login remote, cannot follow it.
 
-**Honest gap (tracked on `hugmesh-forum-bff-api`):** the forum BFF's MFA denial
-is Spring Security's default access-denied today — `403`, empty body, no signal
-header — so the detector cannot fire against it until that BFF emits the
-structured `X-Step-Up-Required` signal. The UI half is wired and pinned by unit
-tests so the offer appears the moment the BFF half lands, and never before.
+**The BFF half is live.** `hugmesh-forum-bff-api` issue #15 (merged as PR #17,
+2026-09-18) makes the BFF answer an MFA denial with `403` plus
+`X-Step-Up-Required: X-Forum-StepUp`. A role denial still carries no signal, so
+it never offers a challenge. While `app.mfa.enabled` is off the gate is a no-op
+and the signal never appears.
 
 ## Forum profile: the platform's user page, embedded
 
@@ -270,10 +273,11 @@ per id to `localStorage` (`hug.forum.announcements.dismissed`).
 
 ## Auth & token model (no login UI)
 
-Login and registration are delegated entirely to the platform's SSO identity
-provider through the **login** remote: it runs an OIDC authorization-code
-(PKCE) redirect, and `user-bff` performs the server-side code-to-token
-exchange and holds the per-session identity-token custody and refresh.
+Login and registration are delegated entirely to the platform through the
+**login** remote. Its form posts a username and password to `POST /bff/login`;
+`user-bff` runs the PKCE and state handshake with the internal Casdoor, does the
+code-to-token exchange server-side, and stamps the encrypted tokens onto the
+session row that `admin-bff` stores. The browser is never redirected to Casdoor.
 
 **The browser holds no bearer token at all.** Authentication rides an
 **HttpOnly session cookie** — JS-unreadable, so this module (and every other
@@ -359,6 +363,13 @@ simpler single-brand-per-build model (recommended — static tokens rebranded
 per-brand at build time, one image per brand), the global is simply never
 injected and the service is a no-op.
 
+The image can also be re-themed without a rebuild. At container start,
+`docker-entrypoint.d/50-hug-theme.sh` writes the token text from the
+`HUG_THEME_CSS` environment variable (the older `SNAP_THEME_CSS` is still read)
+to `/tmp/hug-theme.css`; nginx serves it at `/hug-theme.css` and `index.html`
+links it. Unset or empty means an empty stylesheet and the shipped brand. To
+rebrand, change the variable and restart the pod.
+
 ## Typed API client
 
 `ForumService` is the typed service against the BFF contract (typed
@@ -368,10 +379,12 @@ committed **ng-openapi-gen** client under `src/app/api/`, with `ForumService`
 as a thin wrapper — the standard HugMesh pattern for typed BFF clients. The
 generated `src/app/api/` directory is committed on `main`; `ForumService`
 injects the generated client and delegates `listCategories` / `createTopic` /
-`createReply` / `editPost` / `deletePost` straight to it. To regenerate the
-client against an updated contract, run `npm run gen:spec` once
-`hugmesh-forum-bff-api`'s OpenAPI spec is available. Either way, the public
-method signatures exposed here are the stable contract for consumers.
+`createReply` / `editPost` / `deletePost` / `moderateTopic` straight to it.
+`getCategory`, `listTopics`, `getTopic` and `search` stay on hand-written
+`fetch` calls: the BFF spec does not yet declare their parameters or operations.
+To regenerate the client against an updated contract, run `npm run gen:spec`
+(see [Regenerating the API client](#regenerating-the-api-client)). Either way,
+the public method signatures exposed here are the stable contract for consumers.
 
 ## Multi-tenancy
 
@@ -473,21 +486,22 @@ lookup error) renders exactly as a plain post.
   half is complete: it renders no login form, holds no bearer token, and
   authenticates purely via the HttpOnly session cookie (see [Auth & token
   model](#auth--token-model-no-login-ui)). What remains is platform-side and
-  outside this repository — the login remote's OIDC (PKCE) redirect,
-  `user-bff`'s custody-token exchange, and platform-level end-to-end proof
-  that SSO login works start to finish.
+  outside this repository — the login remote's native login, `user-bff`'s
+  custody-token exchange, and platform-level end-to-end proof that SSO login
+  works start to finish.
 - External notification channels for the forum (in addition to the in-app
   notification MVP already shipped at the platform level) are in flight.
   Matrix DM, an Akkoma feed, a phpBB forum channel, and email are the planned
   channels; the forum channel specifically is the natural surface for
   forum-targeted notifications and is roadmap for this repository.
 - Step-up multi-factor authentication on moderation: the BFF gate is merged
-  (forum-bff PR #11, live once `app.mfa.enabled` flips) and this remote detects
-  the platform's step-up contract and offers the challenge (see [Step-up (MFA)
-  on moderation](#step-up-mfa-on-moderation)). Still open, tracked on issue #3:
-  the forum BFF emitting the structured `X-Step-Up-Required` signal on an MFA
-  denial (without it the detector cannot fire), and an inline challenge with a
-  blind retry instead of the navigate-away link.
+  (forum-bff PR #11, live once `app.mfa.enabled` flips), the BFF emits the
+  `X-Step-Up-Required` signal (issue #15), and this remote detects it and offers
+  the challenge (see [Step-up (MFA)
+  on moderation](#step-up-mfa-on-moderation)). Still open, tracked on issue #3
+  of this repository: loading login-ui's challenge in place instead of the
+  navigate-away link. The e2e scenario for it is tagged `@fixme` and fails
+  today by design.
 - Migrating the shared session out of `localStorage`: this remote now hydrates
   from the authoritative `GET /bff/session` and only reads the `hug.session`
   mirror as seed/fallback (see [Auth & token model](#auth--token-model-no-login-ui)).
@@ -513,8 +527,10 @@ that exposes `./routes`).
 
 ### Regenerating the API client
 
-Once `hugmesh-forum-bff-api`'s OpenAPI spec is available locally (see that
-repo for how to produce it), run:
+`gen:spec` reads the spec from
+`../hugmesh-forum-bff-api/src/main/resources/openapi/openapi.json` (a sibling
+checkout), or from the path in `FORUM_BFF_SPEC`. If the file is missing, run
+`./mvnw -Dtest=OpenApiSpecDumpTest test` in `hugmesh-forum-bff-api` first.
 
 ```bash
 npm run gen:spec   # copies the spec to ./openapi.json and regenerates src/app/api/
@@ -529,21 +545,27 @@ guide.
 
 ## Deployment
 
-`Dockerfile` builds the Forum remote (Node 24 / Angular CLI 22) and serves
-`dist/forum/browser` via nginx with CORS enabled (the host fetches
-`remoteEntry.json` cross-origin) and a defense-in-depth **HTTP security
-header** set emitted on every response: `X-Content-Type-Options: nosniff`,
-`X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`,
-HSTS, and a real **Content-Security-Policy** (`default-src`/`script-src
-'self'`, `style-src 'self' 'unsafe-inline'`, `img-src`/`font-src 'self' data:`,
-`connect-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `frame-ancestors
-'none'` — a backstop to the client-side DOMPurify pass, since this UI renders
-untrusted forum-post HTML). COEP/CORP/Permissions-Policy are deferred to a
-later cluster-tuning pass. `/healthz` returns `200`.
+`Dockerfile` builds the Forum remote (Node 24 / Angular CLI 22, with
+`--base-href=/social/forum/`) and serves `dist/forum/browser` via nginx 1.27
+with CORS enabled (the host fetches `remoteEntry.json` cross-origin) and a
+defense-in-depth **HTTP security header** set emitted on every response:
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: strict-origin-when-cross-origin`, HSTS, and a real,
+nonce-based **Content-Security-Policy** (`default-src 'self'`, `script-src
+'self' 'nonce-…' blob:`, `style-src 'self' 'unsafe-inline' blob:`, `img-src
+'self' data: https:`, `font-src 'self' data:`, `connect-src 'self' blob:`,
+`base-uri 'self'`, `object-src 'none'`, `frame-ancestors 'none'` — a backstop
+to the client-side DOMPurify pass, since this UI renders untrusted forum-post
+HTML). nginx stamps a per-request nonce on every `<script>` tag of
+`index.html`. `nginx.conf` sets no COEP, CORP or Permissions-Policy header.
+`/healthz` returns `200`.
 
 CI runs on **GitLab** (`.gitlab-ci.yml`); the GitHub repository is
 pull-mirrored into an internal GitLab instance for the pipeline to run
-against. There are no GitHub Actions in this repository.
+against. The one GitHub Actions workflow, `.github/workflows/release.yml`, has
+only a `workflow_dispatch` trigger: it builds the image and pushes it to
+`ghcr.io/hugmesh/hugmesh-forum-ui`, tagged with the given tag or the short
+commit SHA, and as `latest`.
 
 The pipeline has **four stages** (`stages: [test, e2e, build, pentest]`):
 
@@ -573,7 +595,7 @@ The pipeline has **four stages** (`stages: [test, e2e, build, pentest]`):
 
 The built image is deployed to the `hugmesh-frontend` namespace and fronted by
 the front-end gateway at `/social/forum`; see `deploy/` for the Kubernetes
-manifests (`Deployment`, `HorizontalPodAutoscaler`, Kustomize base).
+manifests (`Deployment`, `Service`, `HorizontalPodAutoscaler`, Kustomize base).
 
 ## Related HugMesh repositories
 
