@@ -40,6 +40,7 @@ keeps them dark.
 | `forum/announcements.feature` | MULTIUSER — published forum announcement seen by a logged-in user, dismiss-once persistence, pinned (non-dismissible) variant, anonymous sees none |
 | `forum/ban-consequence.feature` | MULTIUSER CONSEQUENCE — a banned user's reply is rejected LOUDLY via the `aria-live` outcome region, never silently dropped |
 | `forum/role-change-mid-session.feature` | MULTIUSER-REACTIVE — role revoke/grant broadcast over `hug.session` + `hug-session-change` re-gates affordances WITHOUT a reload |
+| `forum/moderation-step-up.feature` | MOCKED + ARMED — the topic page offers the platform's MFA challenge when the BFF refuses a lock/unlock with `X-Step-Up-Required`, and never on a plain role 403; the armed lane (`MFA_STEPUP_ARMED=1`) checks the real BFF's refusal on `/bff/forum/admin/**` and `/bff/forum/moderation/**`. One scenario (challenge loaded in place) is `@fixme` and fails until forum-ui issue #3 box 2 lands |
 | `forum/branding.feature` | BRANDING — the resolved `ForumBrandService` wordmark ("HugMesh Forum" under Model A) reaches the rendered header |
 
 Surfaces + role gates are grounded against the real components
@@ -65,13 +66,13 @@ fires.
 ```bash
 npm ci
 npx bddgen                 # compiles features/**/*.feature -> .features-gen/
-npx playwright test --list # 0 with the default 'not @cluster' filter (ships dark)
+npx playwright test --list # 0 tests with the default 'not @cluster' filter (ships dark); exits 1 with "No tests found"
 ```
 
 Prove every scenario *parses + is discoverable* with a no-filter override config
 (the `e2e:bdd` GitLab job does exactly this): generate a temp config without the
 `tags` filter, then `bddgen -c` + `playwright test --list -c`. As of the
-multi-user journey wave, that lists **87 scenarios across 16 features**.
+multi-user journey wave, that lists **103 tests across 17 feature files** (counted 2026-10-07; outline rows count as tests).
 
 ## Run live (later wave — needs a cluster)
 
@@ -97,8 +98,9 @@ rather than silently authenticating with a guessable default.
   `forum-mod`, `forum-user`, `forum-user-2`, `bare-mod`, `plain-user` and
   `superadmin` from this roster, while the
   generator's own personas (`e2e-admin`, `e2e-mod`, `e2e-user`, `e2e-forum`,
-  `e2e-superadmin` — `tests/stack/seed-e2e.sh`, `tests/e2e-extra-personas.sh`)
-  logged in. Nothing in hugmesh-generator seeds this roster's names, so every
+  `e2e-superadmin` — `tests/stack/seed-e2e.sh`, `tests/e2e-extra-personas.sh`,
+  and `tests/qemu/seed-accounts.sh` for `e2e-forum`, which holds `ROLE_FORUM`
+  and `ROLE_USER`) logged in. Nothing in hugmesh-generator seeds this roster's names, so every
   `"X" is logged in` row needs those accounts provisioned (or a name mapping) first.
   There is also no seeded persona holding both `ROLE_MOD` and `ROLE_FORUM`.
 - **A seeded session alone cannot load this remote behind the real gateway.**
