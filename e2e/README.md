@@ -1,25 +1,24 @@
 # hugmesh-forum-ui — e2e (Playwright + playwright-bdd)
 
-Gherkin/BDD end-to-end harness for the **forum-ui native-federation remote**
-(phpBB-backed forum, mounted by the hugmesh.net host at `/social/forum`).
-Copied from the proven `hugmesh-games/e2e` + `hugmesh-admin-ui/e2e`
-pattern. **PURE TEST CODE** — it does not touch the Angular/karma unit build or
-any app code; everything lives under this isolated `e2e/` workspace.
+Gherkin/BDD end-to-end harness for the **forum-ui native-federation remote** (the
+phpBB-backed forum, mounted by the hugmesh.net host at `/social/forum`). It copies the
+`hugmesh-games/e2e` and `hugmesh-admin-ui/e2e` pattern. It is **test code only**. It
+does not touch the Angular/Karma unit build or any app code, and it all lives in this
+isolated `e2e/` workspace.
 
 ## Ships dark (wave 2b)
 
 Every scenario that needs a live stack (host shell + `hugmesh-forum-bff-api` +
-headless phpBB + Casdoor seed) is tagged **`@cluster`** at the feature level. The
-default `playwright.config.ts` filters `tags: 'not @cluster'`, so the **default
-run requires no cluster** — it generates an empty-but-valid runnable set today.
-Un-skip a feature by dropping its `@cluster` tag once the env-test-build wiring
-lands in a later wave.
+headless phpBB + Casdoor seed) carries the **`@cluster`** tag at the feature level.
+The default `playwright.config.ts` filters `tags: 'not @cluster'`, so the **default
+run needs no cluster**. Today it generates an empty but valid set. To turn a feature
+on, drop its `@cluster` tag once the env-test-build wiring lands in a later wave.
 
-`@cluster` (a plain filter tag), **not** playwright-bdd's reserved `@skip`:
-`@skip` removes a scenario from *generation* entirely, so a skip-tagged suite
-can't be *discovered*. `@cluster` lets a no-filter `bddgen` + `--list` generate
-and list every scenario, proving the Gherkin parses, while the default config
-keeps them dark.
+The tag is `@cluster`, a plain filter tag, **not** playwright-bdd's reserved `@skip`.
+`@skip` removes a scenario from *generation*, so a suite tagged `@skip` cannot be
+*discovered*. With `@cluster`, a no-filter `bddgen` plus `--list` generates and lists
+every scenario, which proves the Gherkin parses, while the default config keeps them
+dark.
 
 ## Coverage
 
@@ -43,25 +42,23 @@ keeps them dark.
 | `forum/moderation-step-up.feature` | MOCKED + ARMED — the topic page offers the platform's MFA challenge when the BFF refuses a lock/unlock with `X-Step-Up-Required`, and never on a plain role 403; the armed lane (`MFA_STEPUP_ARMED=1`) checks the real BFF's refusal on `/bff/forum/admin/**` and `/bff/forum/moderation/**`. One scenario (challenge loaded in place) is `@fixme` and fails until forum-ui issue #3 box 2 lands |
 | `forum/branding.feature` | BRANDING — the resolved `ForumBrandService` wordmark ("HugMesh Forum" under Model A) reaches the rendered header |
 
-Surfaces + role gates are grounded against the real components
-(`src/app/*.component.html`, `forum.service.ts`, `session.service.ts`):
+Surfaces and role gates come from the real components (`src/app/*.component.html`,
+`forum.service.ts`, `session.service.ts`):
 
 - `canPost`     = roles ∋ `forum` **or** `admin`
 - `canModerate` = roles ∋ `admin` **or** (`mod` **and** `forum`)  — a bare mod is *not* a forum moderator
 - `ownsPost`    = roles ∋ `admin` **or** `session.id === post.authorSubject`
 
-Session-seeding coupling (issue #3 item 2): `SessionService` now re-reads the
-authoritative `GET /bff/session` on construction and on every
-`hug-session-change` broadcast that leaves a `hug.session` mirror behind, and
-the cookie's roles WIN over the mirror when that probe answers 200. The
-mirror-rewrite step (`"... has their roles rewritten to ..."` in
-`features/steps/multiuser-steps.ts`) therefore only holds for identities that
-`have a seeded session` — no `bff_` cookie, so the probe 401s and the rewritten
-mirror stands. Do not combine that step with a REAL login in one scenario: the
-cookie's real roles would override the rewrite on the very broadcast the step
-fires.
+Session-seeding coupling (issue #3 item 2): `SessionService` re-reads the
+authoritative `GET /bff/session` on construction and on every `hug-session-change`
+broadcast that leaves a `hug.session` mirror behind. When that probe answers 200, the
+cookie's roles WIN over the mirror. So the mirror-rewrite step (`"... has their roles
+rewritten to ..."` in `features/steps/multiuser-steps.ts`) holds only for identities
+that `have a seeded session`: they have no `bff_` cookie, the probe 401s, and the
+rewritten mirror stands. Do not combine that step with a REAL login in one scenario.
+The cookie's real roles would override the rewrite on the broadcast the step fires.
 
-## Run offline (what CI does — compile + discover, no browser, no cluster)
+## Run offline (what CI does: compile and discover, no browser, no cluster)
 
 ```bash
 npm ci
@@ -69,12 +66,11 @@ npx bddgen                 # compiles features/**/*.feature -> .features-gen/
 npx playwright test --list # 0 tests with the default 'not @cluster' filter (ships dark); exits 1 with "No tests found"
 ```
 
-Prove every scenario *parses + is discoverable* with a no-filter override config
+To prove every scenario *parses and is discoverable*, use a no-filter override config
 (the `e2e:bdd` GitLab job does exactly this): generate a temp config without the
-`tags` filter, then `bddgen -c` + `playwright test --list -c`. As of the
-multi-user journey wave, that lists **103 tests across 17 feature files** (counted 2026-10-07; outline rows count as tests).
+`tags` filter, then run `bddgen -c` and `playwright test --list -c`. That lists **103 tests across 17 feature files** (counted 2026-10-07; outline rows count as tests).
 
-## Run live (later wave — needs a cluster)
+## Run live (later wave; needs a cluster)
 
 ```bash
 E2E_BASE_URL=https://your-host:8443 \
@@ -82,18 +78,17 @@ E2E_FORUM_USER_PASSWORD=… E2E_ADMIN_PASSWORD=… \
 npm run bdd                # bddgen && playwright test
 ```
 
-Per-user `E2E_<ROLE>_PASSWORD` / shared `E2E_PASSWORD` env vars above are
-optional overrides, not requirements: `tests/helpers/roles.ts` (`passwordFor()`)
-falls back to the run-state `.e2e-credentials` file written by
-hugmesh-generator's `make stack-seed` (`$E2E_CREDENTIALS_FILE`, or a
-`.e2e-credentials` found by walking up from cwd). There is no built-in literal
-password — if nothing resolves, the suite throws naming `make stack-seed`
-rather than silently authenticating with a guessable default.
+The per-user `E2E_<ROLE>_PASSWORD` and shared `E2E_PASSWORD` variables are optional
+overrides. `tests/helpers/roles.ts` (`passwordFor()`) falls back to the run-state
+`.e2e-credentials` file that hugmesh-generator's `make stack-seed` writes
+(`$E2E_CREDENTIALS_FILE`, or a `.e2e-credentials` found by walking up from the
+working directory). There is no built-in password. If nothing resolves, the suite
+throws and names `make stack-seed`, rather than sign in with a guessable default.
 
-**Two things a live run needs that this suite does not provide** (measured
-2026-09-23 against the generator's compose stack at `https://localhost:8488`):
+**A live run needs two things this suite does not provide** (measured 2026-09-23
+against the generator's compose stack at `https://localhost:8488`):
 
-- **The personas here are not the ones the generator seeds.** `POST /bff/login`
+- **This suite's personas are not the ones the generator seeds.** `POST /bff/login`
   answered `401 "The user: hugmesh/<name> doesn't exist"` for `admin`,
   `forum-mod`, `forum-user`, `forum-user-2`, `bare-mod`, `plain-user` and
   `superadmin` from this roster, while the
@@ -102,16 +97,16 @@ rather than silently authenticating with a guessable default.
   and `tests/qemu/seed-accounts.sh` for `e2e-forum`, which holds `ROLE_FORUM`
   and `ROLE_USER`) logged in. Nothing in hugmesh-generator seeds this roster's names, so every
   `"X" is logged in` row needs those accounts provisioned (or a name mapping) first.
-  There is also no seeded persona holding both `ROLE_MOD` and `ROLE_FORUM`.
+  No seeded persona holds both `ROLE_MOD` and `ROLE_FORUM`.
 - **A seeded session alone cannot load this remote behind the real gateway.**
   `/social/forum/remoteEntry.json` answered `401` without a `bff_` cookie (the
-  fe-gateway row for `/social/forum/**` is `ROLE_FORUM`), so a `has a seeded
-  session` row — which writes only the `hug.session` mirror — needs a real session
-  cookie in the same browser context before the host shell can mount the forum.
+  fe-gateway row for `/social/forum/**` is `ROLE_FORUM`). A `has a seeded session`
+  row writes only the `hug.session` mirror, so it needs a real session cookie in the
+  same browser context before the host shell can mount the forum.
 
-`login()` in `tests/helpers/roles.ts` now drives login-ui's real selector contract
-(`data-testid` `login-username` / `login-password` / `login-submit`). The earlier
-`formControlName` / `.login-btn` selectors matched nothing on the current login form.
+`login()` in `tests/helpers/roles.ts` drives login-ui's selector contract (`data-testid`
+`login-username` / `login-password` / `login-submit`). The earlier `formControlName` /
+`.login-btn` selectors matched nothing on the current login form.
 
-Per-step PNGs are attached to the HTML report (`results/html`) via the
-`AfterStep` hook in `features/support/fixtures.ts`; trace/video retain on failure.
+The `AfterStep` hook in `features/support/fixtures.ts` attaches a PNG of each step to
+the HTML report (`results/html`). Trace and video are kept on failure.
