@@ -477,10 +477,14 @@ lookup error) renders exactly as a plain post.
 
 ## Known limitations & roadmap
 
-- `ForumService.canModerate` is defined and wired for parity with the BFF
-  gate, but no dedicated moderation UI consumes it yet beyond the per-post
-  edit/delete controls and the topic lock/unlock control. A more complete
-  forum-moderation surface (queue view, bulk actions) is planned.
+- `ForumService.canModerate` drives the per-post edit/delete controls, the topic
+  lock/unlock control, and a `moderation` page (linked from the forum index for
+  moderators) that shows how many posts are waiting for review. It is a count
+  only: the moderator-reachable endpoint (`GET /bff/forum/moderation/queue`)
+  returns `{queueDepth, source}`, and the page reports a degraded source as
+  "unavailable" rather than as zero. Still planned: the per-post queue list and
+  bulk approve/reject, which need a moderator-readable list and approve/reject
+  on the forum BFF first (today they are ADMIN-only there).
 - Platform-wide SSO end-to-end verification is in progress. This remote's own
   half is complete: it renders no login form, holds no bearer token, and
   authenticates purely via the HttpOnly session cookie (see [Auth & token

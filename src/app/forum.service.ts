@@ -87,6 +87,15 @@ export interface ForumSearchResult {
   posts: ForumPost[];
 }
 
+/** The moderation queue COUNT the moderator-reachable endpoint returns. `depth`
+ *  is non-null only when `available`; a degraded/unreadable source is never
+ *  reported as a zero. */
+export interface ModerationQueueDepth {
+  readonly depth: number | null;
+  readonly source: string;
+  readonly available: boolean;
+}
+
 export interface PageQuery {
   page?: number;
   pageSize?: number;
@@ -370,6 +379,38 @@ export class ForumService {
     return this.genMod
       .moderateForumTopic({ id: topicId, body: reason ? { action, reason } : { action } })
       .then(() => undefined)
+      .catch((e: unknown) => {
+        throw toStepUpError(e) ?? e;
+      });
+  }
+
+  /**
+   * Read the moderation queue DEPTH (GET /bff/forum/moderation/queue, delegated to
+   * the generated {@link GenForumModerationService}). That moderator-reachable
+   * endpoint returns only `{queueDepth, source}` — a count, not the queued posts
+   * (the per-post list is the ADMIN-only `/bff/forum/admin/**` seam).
+   *
+   * <p>`available` is false when the count cannot be trusted as "nothing is
+   * waiting": the BFF reports `source: "degraded"` with `queueDepth: 0` when the
+   * phpBB seam is dark, breaker-open or errored, and a missing/non-numeric depth
+   * is treated the same way. Only an `available` result may be shown as a count.
+   *
+   * <p>Step-up: a refusal carrying the platform's step-up contract rejects with a
+   * {@link StepUpRequiredError} (same mapping as {@link moderateTopic}); every
+   * other failure rejects with the original transport error.
+   */
+  getModerationQueueDepth(): Promise<ModerationQueueDepth> {
+    return this.genMod
+      .viewForumModerationQueue()
+      .then((r) => {
+        const o = r as { queueDepth?: unknown; source?: unknown };
+        const source = typeof o.source === 'string' ? o.source : '';
+        const depth = typeof o.queueDepth === 'number' && Number.isFinite(o.queueDepth) && o.queueDepth >= 0
+          ? o.queueDepth
+          : null;
+        const available = depth !== null && source !== '' && source !== 'degraded';
+        return { depth: available ? depth : null, source, available };
+      })
       .catch((e: unknown) => {
         throw toStepUpError(e) ?? e;
       });

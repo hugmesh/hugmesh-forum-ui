@@ -1,9 +1,9 @@
 import { FORUM_ROUTES } from './forum.routes';
 
 describe('FORUM_ROUTES', () => {
-  it('exposes the index, category, topic, create, search and profile routes', () => {
+  it('exposes the index, category, topic, create, search, moderation and profile routes', () => {
     const paths = FORUM_ROUTES.map((r) => r.path);
-    expect(paths).toEqual(['', 'categories/:id', 'topics/:id', 'create-topic', 'search', 'profile/:subject']);
+    expect(paths).toEqual(['', 'categories/:id', 'topics/:id', 'create-topic', 'search', 'moderation', 'profile/:subject']);
   });
 
   it('binds a component to every route (no empty leaves)', () => {

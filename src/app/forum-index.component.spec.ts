@@ -30,11 +30,14 @@ describe('ForumIndexComponent', () => {
   let component: ForumIndexComponent;
   let forum: jasmine.SpyObj<ForumService>;
   const canPost = signal(false);
+  const canModerate = signal(false);
 
   beforeEach(async () => {
     localStorage.clear();
     forum = jasmine.createSpyObj<ForumService>('ForumService', ['listCategories']);
     (forum as unknown as { canPost: typeof canPost }).canPost = canPost;
+    (forum as unknown as { canModerate: typeof canModerate }).canModerate = canModerate;
+    canModerate.set(false);
     forum.listCategories.and.resolveTo([cat({ id: 1, name: 'General' }), cat({ id: 2, name: 'Off-topic' })]);
 
     const annService = jasmine.createSpyObj<ForumAnnouncementsService>('ForumAnnouncementsService', ['load']);
@@ -109,6 +112,20 @@ describe('ForumIndexComponent', () => {
     canPost.set(true);
     await render();
     expect(el().querySelector('[data-testid="forum-new-topic"]')).not.toBeNull();
+  });
+
+  it('hides the moderation queue link unless the caller is a forum moderator', async () => {
+    canModerate.set(false);
+    await render();
+    expect(el().querySelector('[data-testid="forum-moderation-link"]')).toBeNull();
+  });
+
+  it('shows the moderation queue link to a forum moderator', async () => {
+    canModerate.set(true);
+    await render();
+    const link = el().querySelector<HTMLAnchorElement>('[data-testid="forum-moderation-link"]')!;
+    expect(link).not.toBeNull();
+    expect(link.textContent).toContain('Moderation queue');
   });
 
   it('surfaces a load error in a role=alert', async () => {
