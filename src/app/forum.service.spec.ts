@@ -157,6 +157,55 @@ describe('ForumService', () => {
     expect(isStepUpRequiredError(e)).toBeFalse();
   });
 
+  // ── moderation queue depth (GET /bff/forum/moderation/queue) ──────────
+  it('getModerationQueueDepth reads the depth from the moderator queue endpoint', async () => {
+    session.set(makeSession({ roles: ['mod', 'forum'] }));
+    const result = service.getModerationQueueDepth();
+    const req = httpMock.expectOne('/bff/forum/moderation/queue');
+    expect(req.request.method).toBe('GET');
+    req.flush({ queueDepth: 4, source: 'phpbb' });
+    expect(await result).toEqual({ depth: 4, source: 'phpbb', available: true });
+  });
+
+  it('getModerationQueueDepth keeps a LIVE zero as zero (an empty queue is a real answer)', async () => {
+    const result = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush({ queueDepth: 0, source: 'phpbb' });
+    expect(await result).toEqual({ depth: 0, source: 'phpbb', available: true });
+  });
+
+  it('getModerationQueueDepth never reports a degraded source as a count (0 there means "cannot see")', async () => {
+    const result = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush({ queueDepth: 0, source: 'degraded' });
+    expect(await result).toEqual({ depth: null, source: 'degraded', available: false });
+  });
+
+  it('getModerationQueueDepth treats a missing source or a non-numeric depth as unavailable', async () => {
+    const noSource = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush({ queueDepth: 3 });
+    expect((await noSource).available).toBeFalse();
+
+    const noDepth = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush({ queueDepth: 'many', source: 'phpbb' });
+    expect(await noDepth).toEqual({ depth: null, source: 'phpbb', available: false });
+  });
+
+  it('getModerationQueueDepth maps a step-up 403 to a StepUpRequiredError', async () => {
+    const result = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush(
+      '',
+      { status: 403, statusText: 'Forbidden', headers: { [STEP_UP_SIGNAL_HEADER]: 'X-Forum-StepUp' } },
+    );
+    expect(await rejection(result)).toBeInstanceOf(StepUpRequiredError);
+  });
+
+  it('getModerationQueueDepth rethrows an ordinary 403 untouched (no MFA prompt)', async () => {
+    const result = service.getModerationQueueDepth();
+    httpMock.expectOne('/bff/forum/moderation/queue').flush('', { status: 403, statusText: 'Forbidden' });
+    const e = await rejection(result);
+    expect(e).toBeInstanceOf(HttpErrorResponse);
+    expect(isStepUpRequiredError(e)).toBeFalse();
+  });
+
   // ── role-responsive gates (defence-in-depth; BFF is the real gate) ──
   it('canPost is false for a plain user without the forum role', () => {
     session.set(makeSession({ roles: ['user'] }));

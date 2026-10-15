@@ -15,6 +15,9 @@
         VN profile
       </button>
     }
+    @if (canModerate()) {
+      <a routerLink="../moderation" class="forum-btn forum-btn--ghost" data-testid="forum-moderation-link">Moderation queue</a>
+    }
     @if (canPost()) {
       <a routerLink="../create-topic" class="forum-btn" data-testid="forum-new-topic">New topic</a>
     }
