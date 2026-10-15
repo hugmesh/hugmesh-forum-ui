@@ -53,8 +53,10 @@
             </a>
             <span class="forum-category__stats">
               <span>{{ c.topicCount }} topics</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ c.postCount }} posts</span>
+              @if (c.postCount !== undefined) {
+                <span aria-hidden="true">·</span>
+                <span>{{ c.postCount }} posts</span>
+              }
             </span>
           </li>
         }

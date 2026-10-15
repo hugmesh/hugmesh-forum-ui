@@ -25,7 +25,10 @@ export interface ForumCategory {
   name: string;
   description: string;
   topicCount: number;
-  postCount: number;
+  /** Absent on the wire today: forum-bff-api's `ForumDto.Category` carries only
+   *  `{id, name, description, topicCount}`. Optional so the UI never prints a
+   *  post count the BFF did not send. */
+  postCount?: number;
 }
 
 export interface ForumTopic {
@@ -90,6 +93,88 @@ export interface PageQuery {
   sort?: 'latest' | 'oldest' | 'replies';
 }
 
+// ---------------------------------------------------------------------------
+// Wire bridge. forum-bff-api's ForumController answers every read with an
+// ENVELOPE (`{categories}`, `{topics}`, `{topic, replies}`) and its records
+// (ForumDto.Category/Topic/Reply) are narrower than the UI's DTOs above. These
+// helpers are the one place that knows the difference; the components keep the
+// public ForumCategory / ForumTopic / ForumPost / Page / TopicDetail shapes.
+// ---------------------------------------------------------------------------
+
+type Json = Record<string, unknown>;
+
+function isObj(v: unknown): v is Json {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** The list under `key` of a BFF envelope; a bare array is tolerated too. */
+function unwrapList(body: unknown, key: string): Json[] {
+  const list = Array.isArray(body) ? body : isObj(body) && Array.isArray(body[key]) ? (body[key] as unknown[]) : [];
+  return list.filter(isObj);
+}
+
+function str(v: unknown, fallback = ''): string {
+  return typeof v === 'string' ? v : fallback;
+}
+
+function num(v: unknown, fallback = 0): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+function toTopic(t: Json): ForumTopic {
+  const createdAt = str(t['createdAt']);
+  return {
+    id: num(t['id'], NaN),
+    categoryId: num(t['categoryId']),
+    title: str(t['title']),
+    authorSubject: str(t['authorSubject']),
+    authorLabel: str(t['authorLabel'], str(t['authorSubject'])),
+    replyCount: num(t['replyCount']),
+    viewCount: num(t['viewCount']),
+    locked: t['locked'] === true,
+    createdAt,
+    lastPostAt: str(t['lastPostAt'], createdAt),
+  };
+}
+
+/** A BFF `Reply` ({id, topicId, authorSubject, body, createdAt}) as a ForumPost. */
+function toPost(r: Json): ForumPost {
+  return {
+    id: num(r['id'], NaN),
+    topicId: num(r['topicId']),
+    authorSubject: str(r['authorSubject']),
+    authorLabel: str(r['authorLabel'], str(r['authorSubject'])),
+    bodyHtml: str(r['bodyHtml'], str(r['body'])),
+    createdAt: str(r['createdAt']),
+    editedAt: typeof r['editedAt'] === 'string' ? r['editedAt'] : null,
+  };
+}
+
+/** The entity of a write response: `{<key>: {...}}`, or the bare entity. A body
+ *  with no numeric id (the 202 `{state:'pending'}` of a dark phpBB seam) is not
+ *  an entity: reject instead of handing the UI an object with id NaN. */
+function unwrapEntity(body: unknown, key: string, what: string): Json {
+  const e = isObj(body) && isObj(body[key]) ? (body[key] as Json) : body;
+  if (!isObj(e) || typeof e['id'] !== 'number') throw new Error(`${what} was not created or changed (no id in the BFF response)`);
+  return e;
+}
+
+function time(iso: string): number {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/** The BFF's GET /topics takes only `categoryId` and returns every topic in the
+ *  category; `page`, `pageSize` and `sort` are applied here. */
+function sortTopics(topics: ForumTopic[], sort: NonNullable<PageQuery['sort']>): ForumTopic[] {
+  const by: Record<typeof sort, (a: ForumTopic, b: ForumTopic) => number> = {
+    latest: (a, b) => time(b.lastPostAt) - time(a.lastPostAt),
+    oldest: (a, b) => time(a.createdAt) - time(b.createdAt),
+    replies: (a, b) => b.replyCount - a.replyCount,
+  };
+  return [...topics].sort(by[sort]);
+}
+
 /**
  * Thin reactive wrapper over hugmesh-forum-bff-api /bff/forum/**. Auth rides
  * the HttpOnly `bff_` session cookie: every request is sent with credentials
@@ -115,10 +200,16 @@ export interface PageQuery {
  * delegation boundary.
  *
  * <p>{@link listTopics} / {@link getTopic} ({@code page}/{@code pageSize}/{@code
- * sort} query params the BFF spec does not yet declare) and {@link getCategory}
- * / {@link search} (endpoints not in the BFF spec at all) stay on the
- * hand-written {@code fetch} path so their wire behaviour is byte-identical —
- * they migrate once the BFF spec grows those parameters/operations.
+ * sort} query params the BFF spec does not yet declare) stay on the hand-written
+ * {@code fetch} path so their wire behaviour is byte-identical — they migrate
+ * once the BFF spec grows those parameters. {@link getCategory} has no BFF
+ * endpoint and resolves from {@link listCategories}; {@link search} has none
+ * either and still resolves empty.
+ *
+ * <p><b>Wire shapes.</b> The BFF wraps every read in an envelope
+ * ({@code {categories}}, {@code {topics}}, {@code {topic, replies}}) and writes
+ * in {@code {topic}} / {@code {reply}} / {@code {post}}; the module-level helpers
+ * above unwrap them into the public DTOs.
  *
  * Role-responsive: the post/reply/new-topic affordances are gated by
  * {@link canPost} (the caller holds the forum role OR ROLE_ADMIN). Visibility
@@ -177,33 +268,50 @@ export class ForumService {
   // ----- reads ------------------------------------------------------------
 
   listCategories(): Promise<ForumCategory[]> {
-    // Delegated to the generated client. The BFF returns a JSON array of
-    // categories; ng-openapi-gen types the untyped Mono<Map<String,Object>>
-    // response as `{[k: string]: {}}`, so cast back to the public DTO array at
-    // the boundary. The fallback-to-[] semantics of the old fetch path are
-    // preserved via .catch (a non-2xx becomes an HttpErrorResponse here).
+    // Delegated to the generated client. The BFF answers `{"categories":[...]}`
+    // (ForumController.categories()); ng-openapi-gen types that untyped
+    // Mono<Map<String,Object>> as `{[k: string]: {}}`, so unwrap the envelope
+    // here (a bare array is tolerated). The fallback-to-[] semantics of the old
+    // fetch path are preserved via .catch (a non-2xx becomes an
+    // HttpErrorResponse here).
     return this.gen.listForumCategories()
-      .then((r) => r as unknown as ForumCategory[])
+      .then((r) => unwrapList(r, 'categories') as unknown as ForumCategory[])
       .catch(() => []);
   }
 
-  getCategory(id: number): Promise<ForumCategory | null> {
-    return this.getJson<ForumCategory | null>(`/categories/${id}`, undefined, null);
+  /** The BFF has no GET /categories/{id} (it 404s), so resolve the category from
+   *  the list. Resolves null when it is absent. */
+  async getCategory(id: number): Promise<ForumCategory | null> {
+    return (await this.listCategories()).find((c) => c.id === id) ?? null;
   }
 
-  listTopics(categoryId: number, query?: PageQuery): Promise<Page<ForumTopic>> {
-    return this.getJson<Page<ForumTopic>>(
+  async listTopics(categoryId: number, query?: PageQuery): Promise<Page<ForumTopic>> {
+    const page = query?.page ?? 1;
+    const pageSize = query?.pageSize ?? 20;
+    // The BFF answers `{"topics":[...]}` for the WHOLE category and reads only
+    // `categoryId`; the page params are still sent (harmless, and honoured once
+    // the BFF learns them) but paging and sorting are applied client-side.
+    const body = await this.getJson<unknown>(
       '/topics',
-      { categoryId, page: query?.page ?? 1, pageSize: query?.pageSize ?? 20, sort: query?.sort ?? 'latest' },
-      { items: [], page: 1, pageSize: 20, total: 0 },
+      { categoryId, page, pageSize, sort: query?.sort ?? 'latest' },
+      { topics: [] },
     );
+    const all = sortTopics(unwrapList(body, 'topics').map(toTopic).filter((t) => Number.isFinite(t.id)), query?.sort ?? 'latest');
+    return { items: all.slice((page - 1) * pageSize, page * pageSize), page, pageSize, total: all.length };
   }
 
-  getTopic(id: number, query?: PageQuery): Promise<TopicDetail> {
-    return this.getJson<TopicDetail>(`/topics/${id}`, { page: query?.page ?? 1, pageSize: query?.pageSize ?? 20 });
+  async getTopic(id: number, query?: PageQuery): Promise<TopicDetail> {
+    const body = await this.getJson<unknown>(`/topics/${id}`, { page: query?.page ?? 1, pageSize: query?.pageSize ?? 20 });
+    // `{topic, replies}`; a dark phpBB seam answers `{topic: {}, replies: []}`,
+    // which is "no such topic", not a topic with id NaN.
+    const topic = unwrapEntity(body, 'topic', 'topic');
+    const replies = isObj(body) ? unwrapList(body, Array.isArray(body['replies']) ? 'replies' : 'posts') : [];
+    return { topic: toTopic(topic), posts: replies.map(toPost) };
   }
 
   search(q: string): Promise<ForumSearchResult> {
+    // Still a dead call: forum-bff-api maps no /search, so this resolves the
+    // empty fallback on the 404. Tracked on hugmesh-forum-ui#19.
     return this.getJson<ForumSearchResult>('/search', { q }, { topics: [], posts: [] });
   }
 
@@ -211,23 +319,23 @@ export class ForumService {
 
   createTopic(params: CreateTopicParams): Promise<ForumTopic> {
     // Delegated. The generated CreateTopic body is {categoryId?, title, body} —
-    // the same shape this method already sent; cast the Map<String,Object>
-    // response back to the public ForumTopic at the boundary.
+    // the same shape this method already sent; the BFF answers `{topic: {...}}`,
+    // unwrapped back to the public ForumTopic at the boundary.
     return this.gen.createForumTopic({ body: { categoryId: params.categoryId, title: params.title, body: params.body } })
-      .then((r) => r as unknown as ForumTopic);
+      .then((r) => toTopic(unwrapEntity(r, 'topic', 'topic')));
   }
 
   createReply(params: CreateReplyParams): Promise<ForumPost> {
     // Delegated. Wire body is {body} POSTed to /bff/forum/topics/{id}/replies —
     // identical to the old send() call.
     return this.gen.replyToForumTopic({ id: params.topicId, body: { body: params.body } })
-      .then((r) => r as unknown as ForumPost);
+      .then((r) => toPost(unwrapEntity(r, 'reply', 'reply')));
   }
 
   editPost(postId: number, body: string): Promise<ForumPost> {
     // Delegated. PUT /bff/forum/posts/{id} with {body}.
     return this.gen.editForumPost({ id: postId, body: { body } })
-      .then((r) => r as unknown as ForumPost);
+      .then((r) => toPost(unwrapEntity(r, 'post', 'post')));
   }
 
   deletePost(postId: number): Promise<void> {
