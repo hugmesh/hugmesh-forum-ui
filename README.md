@@ -373,6 +373,18 @@ client against an updated contract, run `npm run gen:spec` once
 `hugmesh-forum-bff-api`'s OpenAPI spec is available. Either way, the public
 method signatures exposed here are the stable contract for consumers.
 
+### Wire envelopes
+
+`forum-bff-api` wraps what it returns: `GET /bff/forum/categories` answers
+`{"categories":[...]}`, `GET /bff/forum/topics?categoryId=` answers
+`{"topics":[...]}` (the whole category; it reads no `page`/`pageSize`/`sort`),
+`GET /bff/forum/topics/{id}` answers `{"topic":{...},"replies":[...]}`, and the
+writes answer `{"topic"}` / `{"reply"}` / `{"post"}`. `ForumService` unwraps
+these (the helpers above the class) into the public DTOs, pages and sorts
+topics client-side, and resolves `getCategory` from the category list. The BFF
+has no `/search` mapping, so `search()` still resolves empty. The spec fixtures
+use the BFF's real response bodies.
+
 ## Multi-tenancy
 
 Per-brand / per-domain scoping is enforced at the front-end gateway and the

@@ -17,6 +17,42 @@ function makeSession(over: Partial<HugSession> = {}): HugSession {
   };
 }
 
+/** Response bodies exactly as forum-bff-api's ForumController answers them
+ *  (hugmesh-forum-bff-api 7fa8ba1; the categories body is the one measured live
+ *  in hugmesh-forum-ui#19). */
+const BFF_CATEGORIES = {
+  categories: [
+    { id: 2, name: 'Your first forum', description: 'Description of your first forum.', topicCount: 1 },
+    { id: 3, name: 'Off-topic', description: 'Anything else.', topicCount: 0 },
+  ],
+};
+const BFF_TOPIC = {
+  id: 1,
+  categoryId: 2,
+  title: 'Welcome to phpBB3',
+  authorSubject: 'casdoor:alice',
+  replyCount: 4,
+  createdAt: '2026-09-01T10:00:00Z',
+};
+function bffTopics(n: number) {
+  return {
+    topics: Array.from({ length: n }, (_, i) => ({
+      ...BFF_TOPIC,
+      id: i + 1,
+      title: `Topic ${i + 1}`,
+      replyCount: i,
+      createdAt: new Date(Date.UTC(2026, 8, 1 + i)).toISOString(),
+    })),
+  };
+}
+const BFF_REPLY = {
+  id: 11,
+  topicId: 1,
+  authorSubject: 'casdoor:bob',
+  body: '<p>hello</p>',
+  createdAt: '2026-09-02T10:00:00Z',
+};
+
 describe('ForumService', () => {
   let service: ForumService;
   let session: SessionService;
@@ -57,9 +93,93 @@ describe('ForumService', () => {
     const result = service.listCategories();
     const req = httpMock.expectOne('/bff/forum/categories');
     expect(req.request.method).toBe('GET');
-    req.flush([{ id: 1, name: 'General' }]);
+    req.flush(BFF_CATEGORIES);
     const cats = await result;
-    expect(cats.length).toBe(1);
+    expect(cats.length).toBe(2);
+    expect(cats[0]).toEqual(jasmine.objectContaining({ id: 2, name: 'Your first forum', topicCount: 1 }));
+    expect(Array.isArray(cats)).toBeTrue();
+  });
+
+  it('still accepts a bare category array (defensive)', async () => {
+    const result = service.listCategories();
+    httpMock.expectOne('/bff/forum/categories').flush([{ id: 1, name: 'General' }]);
+    expect((await result).map((c) => c.id)).toEqual([1]);
+  });
+
+  it('resolves an empty list when the categories call fails', async () => {
+    const result = service.listCategories();
+    httpMock.expectOne('/bff/forum/categories').flush('x', { status: 500, statusText: 'Error' });
+    expect(await result).toEqual([]);
+  });
+
+  it('getCategory resolves from the category list (the BFF has no /categories/{id})', async () => {
+    const found = service.getCategory(3);
+    httpMock.expectOne('/bff/forum/categories').flush(BFF_CATEGORIES);
+    expect((await found)?.name).toBe('Off-topic');
+    const missing = service.getCategory(99);
+    httpMock.expectOne('/bff/forum/categories').flush(BFF_CATEGORIES);
+    expect(await missing).toBeNull();
+  });
+
+  describe('fetch-backed reads (topics)', () => {
+    function stubFetch(body: unknown, ok = true): jasmine.Spy {
+      const res = { ok, status: ok ? 200 : 404, json: async () => body } as Response;
+      const existing = globalThis.fetch as unknown as jasmine.Func;
+      if (jasmine.isSpy(existing)) return (existing as unknown as jasmine.Spy).and.resolveTo(res);
+      return spyOn(globalThis, 'fetch').and.resolveTo(res);
+    }
+
+    it('listTopics maps the {topics} envelope into a Page and echoes page/pageSize', async () => {
+      const f = stubFetch(bffTopics(3));
+      const page = await service.listTopics(2, { page: 1, pageSize: 20, sort: 'oldest' });
+      expect(String(f.calls.mostRecent().args[0])).toContain('/bff/forum/topics?categoryId=2');
+      expect(page.page).toBe(1);
+      expect(page.pageSize).toBe(20);
+      expect(page.total).toBe(3);
+      expect(page.items.map((t) => t.id)).toEqual([1, 2, 3]);
+      // BFF fields pass through; fields the BFF never sends get safe defaults.
+      expect(page.items[0]).toEqual(jasmine.objectContaining({
+        categoryId: 2, title: 'Topic 1', authorSubject: 'casdoor:alice', authorLabel: 'casdoor:alice',
+        replyCount: 0, locked: false,
+      }));
+      expect(page.items[0].lastPostAt).toBe(page.items[0].createdAt);
+    });
+
+    it('listTopics pages and sorts client-side (the BFF only reads categoryId)', async () => {
+      stubFetch(bffTopics(25));
+      const latest = await service.listTopics(2, { page: 1, pageSize: 10, sort: 'latest' });
+      expect(latest.total).toBe(25);
+      expect(latest.items.length).toBe(10);
+      expect(latest.items[0].id).toBe(25);
+      stubFetch(bffTopics(25));
+      const last = await service.listTopics(2, { page: 3, pageSize: 10, sort: 'oldest' });
+      expect(last.items.map((t) => t.id)).toEqual([21, 22, 23, 24, 25]);
+      stubFetch(bffTopics(25));
+      const hot = await service.listTopics(2, { sort: 'replies' });
+      expect(hot.items[0].replyCount).toBe(24);
+    });
+
+    it('listTopics resolves an empty page when the call fails', async () => {
+      stubFetch({}, false);
+      expect(await service.listTopics(2)).toEqual({ items: [], page: 1, pageSize: 20, total: 0 });
+    });
+
+    it('getTopic bridges {topic, replies} to {topic, posts}', async () => {
+      stubFetch({ topic: BFF_TOPIC, replies: [BFF_REPLY] });
+      const d = await service.getTopic(1);
+      expect(d.topic.id).toBe(1);
+      expect(d.topic.title).toBe('Welcome to phpBB3');
+      expect(d.posts.length).toBe(1);
+      expect(d.posts[0]).toEqual(jasmine.objectContaining({
+        id: 11, topicId: 1, authorSubject: 'casdoor:bob', authorLabel: 'casdoor:bob',
+        bodyHtml: '<p>hello</p>', editedAt: null,
+      }));
+    });
+
+    it('getTopic rejects the dark-seam body {topic: {}, replies: []} instead of returning a topic with no id', async () => {
+      stubFetch({ topic: {}, replies: [] });
+      await expectAsync(service.getTopic(1)).toBeRejected();
+    });
   });
 
   it('sends the HttpOnly bff_ cookie (withCredentials) and NO Authorization bearer', async () => {
@@ -78,9 +198,32 @@ describe('ForumService', () => {
     const req = httpMock.expectOne('/bff/forum/topics');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ categoryId: 1, title: 'Hi', body: 'body' });
-    req.flush({ id: 7 });
+    req.flush({ topic: { ...BFF_TOPIC, id: 7 } });
     const topic = await result;
     expect(topic.id).toBe(7);
+  });
+
+  it('rejects createTopic when the BFF answers the 202 pending body (nothing was created)', async () => {
+    session.set(makeSession({ roles: ['forum'] }));
+    const result = service.createTopic({ categoryId: 1, title: 'Hi', body: 'body' });
+    httpMock.expectOne('/bff/forum/topics').flush({ state: 'pending', note: 'dark' }, { status: 202, statusText: 'Accepted' });
+    await expectAsync(result).toBeRejected();
+  });
+
+  it('createReply unwraps {reply} into a ForumPost', async () => {
+    session.set(makeSession({ roles: ['forum'] }));
+    const result = service.createReply({ topicId: 1, body: 'hi' });
+    httpMock.expectOne('/bff/forum/topics/1/replies').flush({ reply: BFF_REPLY });
+    const post = await result;
+    expect(post.id).toBe(11);
+    expect(post.bodyHtml).toBe('<p>hello</p>');
+  });
+
+  it('editPost unwraps {post} into a ForumPost', async () => {
+    session.set(makeSession({ roles: ['forum'] }));
+    const result = service.editPost(11, 'edited');
+    httpMock.expectOne('/bff/forum/posts/11').flush({ post: { ...BFF_REPLY, body: 'edited' } });
+    expect((await result).bodyHtml).toBe('edited');
   });
 
   it('moderateTopic POSTs a lock action to the moderation endpoint', async () => {
