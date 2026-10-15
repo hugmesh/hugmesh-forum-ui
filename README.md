@@ -235,11 +235,14 @@ This remote's half of that contract lives in `src/app/step-up.ts`:
   route by design, so the standalone dev shell (`ng serve forum`), which mounts
   no login remote, cannot follow it.
 
-**Honest gap (tracked on `hugmesh-forum-bff-api`):** the forum BFF's MFA denial
-is Spring Security's default access-denied today — `403`, empty body, no signal
-header — so the detector cannot fire against it until that BFF emits the
-structured `X-Step-Up-Required` signal. The UI half is wired and pinned by unit
-tests so the offer appears the moment the BFF half lands, and never before.
+**BFF half shipped:** `hugmesh-forum-bff-api` PR #17 (closing its issue #15)
+makes the forum BFF's step-up denial recognisable on the wire — a `403` carrying
+`X-Step-Up-Required: X-Forum-StepUp` (`ForumStepUpAccessDeniedHandler`, pinned by
+its `StepUpSignalContractTest` and `MfaStepUpPathGateSliceTest`). The header is
+stamped only when the MFA step-up leg of the gate is what refused; a role denial
+stays a bare `403` with no signal, so the detector above never offers a
+challenge to someone it could not let through. The gate itself stays a no-op
+until `app.mfa.enabled` flips, so nothing changes on the wire before then.
 
 ## Forum profile: the platform's user page, embedded
 
@@ -500,10 +503,10 @@ lookup error) renders exactly as a plain post.
 - Step-up multi-factor authentication on moderation: the BFF gate is merged
   (forum-bff PR #11, live once `app.mfa.enabled` flips) and this remote detects
   the platform's step-up contract and offers the challenge (see [Step-up (MFA)
-  on moderation](#step-up-mfa-on-moderation)). Still open, tracked on issue #3:
-  the forum BFF emitting the structured `X-Step-Up-Required` signal on an MFA
-  denial (without it the detector cannot fire), and an inline challenge with a
-  blind retry instead of the navigate-away link.
+  on moderation](#step-up-mfa-on-moderation)). The forum BFF now emits the
+  structured `X-Step-Up-Required` signal on an MFA denial (forum-bff PR #17),
+  so the detector can fire once the flag is on. Still open, tracked on issue
+  #3: an inline challenge with a blind retry instead of the navigate-away link.
 - Migrating the shared session out of `localStorage`: this remote now hydrates
   from the authoritative `GET /bff/session` and only reads the `hug.session`
   mirror as seed/fallback (see [Auth & token model](#auth--token-model-no-login-ui)).
