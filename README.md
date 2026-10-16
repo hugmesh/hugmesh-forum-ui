@@ -229,8 +229,8 @@ This remote's half of the contract is in `src/app/step-up.ts`:
   standalone dev shell (`ng serve forum`), which mounts no login remote, cannot
   follow it.
 
-**The BFF half has shipped.** `hugmesh-forum-bff-api` PR #17 (closing its issue
-#15) makes the BFF answer an MFA denial with a `403` carrying
+**The BFF half has shipped.** `hugmesh-forum-bff-api` PR #17 (closing its
+issue #15) makes the BFF answer an MFA denial with a `403` carrying
 `X-Step-Up-Required: X-Forum-StepUp` (`ForumStepUpAccessDeniedHandler`, pinned by
 its `StepUpSignalContractTest` and `MfaStepUpPathGateSliceTest`). The header is
 stamped only when the MFA step-up leg of the gate refused. A role denial stays a
