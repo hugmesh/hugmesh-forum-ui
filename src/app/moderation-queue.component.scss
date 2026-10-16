@@ -1,0 +1,54 @@
+.queue__count {
+  font-size: 1.1rem;
+  margin-block: 0.75rem;
+}
+
+.queue__stepup {
+  background: var(--forum-surface);
+  border: 1px solid var(--forum-border);
+  border-radius: var(--forum-radius);
+  padding: 0.85rem 1rem;
+  margin-block: 0.5rem 1rem;
+}
+
+.queue__stepup-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.queue__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-block: 0.5rem 1rem;
+}
+
+.forum-btn {
+  padding: 0.55rem 1.1rem;
+  background: var(--forum-accent);
+  color: var(--forum-accent-on, #fff);
+  border: 0;
+  border-radius: var(--forum-radius);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.forum-btn--ghost {
+  background: transparent;
+  color: var(--forum-text);
+  border: 1px solid var(--forum-border);
+}
+
+.forum-muted {
+  color: var(--forum-text-muted);
+}
+
+.forum-error {
+  color: var(--forum-error);
+}

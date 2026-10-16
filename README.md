@@ -45,10 +45,10 @@ organization.
 ## Features
 
 - The `forum` remote exposes the full `FORUM_ROUTES` surface: index, categories,
-  topics, create-topic, search, profile. It has an affordance-level role gate, an
-  embedded federated user-profile fragment, a sandboxed announcements banner,
-  server-sanitized post bodies with a DOMPurify preview, `--hug-*`/`--forum-*` brand
-  tokens, and a standards-based accessibility baseline.
+  topics, create-topic, search, moderation, profile. It has an affordance-level role
+  gate, an embedded federated user-profile fragment, a sandboxed announcements
+  banner, server-sanitized post bodies with a DOMPurify preview, `--hug-*`/`--forum-*`
+  brand tokens, and a standards-based accessibility baseline.
 - A committed **ng-openapi-gen** client lives under `src/app/api/`. `ForumService`
   is a thin wrapper that hands the spec-covered reads and writes to it (see
   [Typed API client](#typed-api-client)).
@@ -86,7 +86,8 @@ organization.
 - `ForumService.canModerate` is wired into the topic view. A forum moderator
   (`mod` + `forum`) or admin gets edit/delete controls on any post (`canEdit =
   ownsPost OR canModerate`) and a topic lock/unlock control (`POST
-  /bff/forum/moderation/topics/{id}`). See [Role-based access](#role-based-access).
+  /bff/forum/moderation/topics/{id}`). It also shows the forum index's "Moderation
+  queue" link to the `moderation` page. See [Role-based access](#role-based-access).
 - The `@cluster`-tagged e2e suite exercises the real HttpOnly session-cookie flow.
   `login()` in `e2e/tests/helpers/roles.ts` waits for the current `hug.session`
   shape (`roles`), and the cross-user and cross-domain DENY steps send
@@ -170,7 +171,8 @@ fragment and the VN character and sticker endpoints.
 | `categories/:id` | `TopicsListComponent` | paginated topics in a category (sort: latest / oldest / replies; prev/next pager) |
 | `topics/:id` | `TopicDetailComponent` | the topic + ordered posts + inline reply form; edit/delete for the post's owner or a moderator; lock/unlock for a moderator |
 | `create-topic` | `CreateTopicComponent` | new topic (category + Markdown title/body + live preview) |
-| `search` | `ForumSearchComponent` | topic/post search |
+| `search` | `ForumSearchComponent` | topic/post search (the BFF maps no `/search` yet, so it resolves empty) |
+| `moderation` | `ModerationQueueComponent` | moderation queue depth for moderators (a count, not the queued posts) |
 | `profile/:subject` | `ForumProfileComponent` | embeds the platform's federated user-profile fragment for the poster |
 
 `src/app/app.routes.ts` is a thin dev-only shell. It mounts `FORUM_ROUTES` at the root
@@ -227,11 +229,14 @@ This remote's half of the contract is in `src/app/step-up.ts`:
   standalone dev shell (`ng serve forum`), which mounts no login remote, cannot
   follow it.
 
-**The BFF half is live.** `hugmesh-forum-bff-api` issue #15 (merged as PR #17,
-2026-09-18) makes the BFF answer an MFA denial with `403` plus
-`X-Step-Up-Required: X-Forum-StepUp`. A role denial still carries no signal, so it
-never offers a challenge. While `app.mfa.enabled` is off the gate does nothing and
-the signal never appears.
+**The BFF half has shipped.** `hugmesh-forum-bff-api` PR #17 (closing its issue
+#15) makes the BFF answer an MFA denial with a `403` carrying
+`X-Step-Up-Required: X-Forum-StepUp` (`ForumStepUpAccessDeniedHandler`, pinned by
+its `StepUpSignalContractTest` and `MfaStepUpPathGateSliceTest`). The header is
+stamped only when the MFA step-up leg of the gate refused. A role denial stays a
+bare `403` with no signal, so the detector never offers a challenge to someone the
+BFF could not let through. While `app.mfa.enabled` is off the gate does nothing
+and the signal never appears.
 
 ## Forum profile: the platform's user page, embedded
 
@@ -358,12 +363,25 @@ spec-covered reads and writes go to a committed **ng-openapi-gen** client under
 `src/app/api/`, with `ForumService` as a thin wrapper. This is the standard HugMesh
 pattern for typed BFF clients. `ForumService` injects the generated client and hands
 `listCategories` / `createTopic` / `createReply` / `editPost` / `deletePost` /
-`moderateTopic` straight to it. `getCategory`, `listTopics`, `getTopic` and `search`
-stay on hand-written `fetch` calls, because the BFF spec does not yet declare their
-parameters or operations. To regenerate the client against an updated contract, run
+`moderateTopic` / `getModerationQueueDepth` straight to it. `listTopics`, `getTopic`
+and `search` stay on hand-written `fetch` calls, because the BFF spec does not yet
+declare their parameters or operations. `getCategory` makes no call of its own: it
+resolves the category from `listCategories`. To regenerate the client against an updated contract, run
 `npm run gen:spec` (see [Regenerating the API
 client](#regenerating-the-api-client)). Either way, the public method signatures
 here are the stable contract for consumers.
+
+### Wire envelopes
+
+`forum-bff-api` wraps what it returns: `GET /bff/forum/categories` answers
+`{"categories":[...]}`, `GET /bff/forum/topics?categoryId=` answers
+`{"topics":[...]}` (the whole category; it reads no `page`/`pageSize`/`sort`),
+`GET /bff/forum/topics/{id}` answers `{"topic":{...},"replies":[...]}`, and the
+writes answer `{"topic"}` / `{"reply"}` / `{"post"}`. `ForumService` unwraps
+these (the helpers above the class) into the public DTOs, pages and sorts
+topics client-side, and resolves `getCategory` from the category list. The BFF
+has no `/search` mapping, so `search()` still resolves empty. The spec fixtures
+use the BFF's real response bodies.
 
 ## Multi-tenancy
 
@@ -449,9 +467,14 @@ An author with no profile, or any lookup error, renders as a plain post.
 
 ## Known limitations & roadmap
 
-- `ForumService.canModerate` is wired for parity with the BFF gate, but beyond the
-  per-post edit/delete controls and the topic lock/unlock control, no moderation UI
-  uses it yet. A fuller moderation surface (queue view, bulk actions) is planned.
+- `ForumService.canModerate` drives the per-post edit/delete controls, the topic
+  lock/unlock control, and the `moderation` page (linked from the forum index for
+  moderators), which shows how many posts are waiting for review. That page is a
+  count only: the moderator-reachable endpoint (`GET /bff/forum/moderation/queue`)
+  returns `{queueDepth, source}`, and the page reports a degraded source as
+  "unavailable" rather than as zero. Still planned: the per-post queue list and
+  bulk approve/reject. Both need a moderator-readable list and approve/reject on
+  the forum BFF first; today those are ADMIN-only there.
 - Platform-wide SSO end-to-end verification is in progress. This remote's half is
   done: it renders no login form, holds no bearer token, and authenticates only
   through the HttpOnly session cookie (see [Auth & token
@@ -465,11 +488,12 @@ An author with no profile, or any lookup error, renders as a plain post.
   repository.
 - Step-up multi-factor authentication on moderation: the BFF gate is merged (forum-bff
   PR #11, live once `app.mfa.enabled` flips), the BFF emits the `X-Step-Up-Required`
-  signal (issue #15), and this remote detects it and offers the challenge (see
-  [Step-up (MFA) on moderation](#step-up-mfa-on-moderation)). Still open, tracked on
-  issue #3 of this repository: loading login-ui's challenge in place instead of the
-  navigate-away link. The e2e scenario for it is tagged `@fixme` and fails today by
-  design.
+  signal on an MFA denial (forum-bff PR #17), and this remote detects it and offers
+  the challenge (see [Step-up (MFA) on moderation](#step-up-mfa-on-moderation)).
+  Still open, tracked on issue #3 of this repository: loading login-ui's challenge in
+  place instead of the navigate-away link. The e2e scenario for it in
+  `e2e/features/forum/moderation-step-up.feature` is tagged `@fixme` and asserts the
+  in-place behavior, so it stays red until that lands.
 - Moving the shared session out of `localStorage`: this remote now hydrates from the
   authoritative `GET /bff/session` and reads the `hug.session` mirror only as seed
   and fallback (see [Auth & token model](#auth--token-model-no-login-ui)). Dropping

@@ -12,6 +12,7 @@ const DEV_SHELL_TITLES: Record<string, string> = {
   'topics/:id': 'Topic',
   'create-topic': 'New topic',
   'search': 'Search',
+  'moderation': 'Moderation queue',
   'profile/:subject': 'Profile',
 };
 

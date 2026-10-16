@@ -15,6 +15,9 @@
         VN profile
       </button>
     }
+    @if (canModerate()) {
+      <a routerLink="../moderation" class="forum-btn forum-btn--ghost" data-testid="forum-moderation-link">Moderation queue</a>
+    }
     @if (canPost()) {
       <a routerLink="../create-topic" class="forum-btn" data-testid="forum-new-topic">New topic</a>
     }
@@ -53,8 +56,10 @@
             </a>
             <span class="forum-category__stats">
               <span>{{ c.topicCount }} topics</span>
-              <span aria-hidden="true">·</span>
-              <span>{{ c.postCount }} posts</span>
+              @if (c.postCount !== undefined) {
+                <span aria-hidden="true">·</span>
+                <span>{{ c.postCount }} posts</span>
+              }
             </span>
           </li>
         }
