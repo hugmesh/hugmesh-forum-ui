@@ -67,8 +67,8 @@ organization.
   GitHub Actions workflow is `release.yml`, which runs by hand (`workflow_dispatch`)
   and pushes the image to GHCR. See [Deployment](#deployment).
 - A Playwright + Gherkin (BDD) end-to-end harness lives under `e2e/`, next to the
-  Karma/JUnit unit-test reporter used in CI. The Karma suite (about 240 specs; 241
-  `it(` blocks in `src/`) passes with `npm test`, and `ng build forum` builds clean.
+  Karma/JUnit unit-test reporter used in CI. The Karma suite (273 specs, counted
+  2026-10-15) passes with `npm test`, and `ng build forum` builds clean.
   A 1-in-3 flake in the VN specs in `topic-detail.component.spec.ts` was diagnosed
   and fixed on 2026-08-14: `topic-detail.component.ts` now calls `markForCheck()` on
   the async VN/topic state writes. The `render()` helper's comment has the timeline.
