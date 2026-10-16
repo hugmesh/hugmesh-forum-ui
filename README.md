@@ -273,10 +273,11 @@ exchange server-side, and stamps the encrypted tokens onto the session row that
 
 **The browser holds no bearer token at all.** Authentication rides an **HttpOnly
 session cookie**. JavaScript cannot read it, so this module and every other remote
-never sees it. Every outgoing `/bff/forum/**` request is sent with credentials
-included (`authInterceptor` in `src/app/auth.interceptor.ts`, or `credentials:
-'include'` for the hand-rolled `fetch` calls in `forum-announcements.service.ts` and
-`sticker.service.ts`). The gateway's cookie-to-bearer filter swaps the cookie for the
+never sees it. Every outgoing `/bff/**` request is sent with credentials included
+(`authInterceptor` in `src/app/auth.interceptor.ts` for the generated client, or
+`credentials: 'include'` on the hand-rolled `fetch` calls in `forum.service.ts`,
+`vn-profile.service.ts`, `session.service.ts`, `forum-announcements.service.ts`,
+`sticker.service.ts` and `character-avatar.service.ts`). The gateway's cookie-to-bearer filter swaps the cookie for the
 real identity bearer token server-side, before the gateway's OAuth2 resource-server
 validation and role-gate checks run. The browser never carries the identity token. A
 request made while signed out has no cookie, and the BFF returns 401.
