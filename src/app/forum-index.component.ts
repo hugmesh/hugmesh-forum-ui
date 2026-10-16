@@ -47,6 +47,10 @@ export class ForumIndexComponent implements OnInit {
    *  or ROLE_ADMIN (UI-convenience; the BFF + extension are the real gate). */
   readonly canPost = this.forum.canPost;
 
+  /** Role-responsive: the moderation queue entry point is shown only to a forum
+   *  moderator (ADMIN, or MOD+FORUM). The page and the BFF re-check. */
+  readonly canModerate = this.forum.canModerate;
+
   /**
    * Close the VN editor panel and return focus to its toggle button.
    * a11y (WCAG 2.1.2 / focus management): Escape inside the panel — and a

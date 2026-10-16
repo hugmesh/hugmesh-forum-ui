@@ -1,0 +1,48 @@
+<h1>Moderation queue</h1>
+
+@if (!canModerate()) {
+  <p class="forum-muted" data-testid="mod-queue-gated" role="status">
+    The moderation queue is for forum moderators. This page is hidden for your account.
+  </p>
+} @else {
+  @if (loading()) {
+    <p class="forum-muted" data-testid="mod-queue-loading" role="status">Loading the moderation queue…</p>
+  } @else if (stepUp()) {
+    <div class="queue__stepup" role="group" aria-labelledby="queue-step-up-title" data-testid="mod-queue-step-up">
+      <h2 id="queue-step-up-title" class="queue__stepup-title">Second-factor check required</h2>
+      <p class="forum-muted">
+        Verify with your authenticator app, a passkey or a recovery code, then come back and check again.
+      </p>
+      <div class="queue__actions">
+        <a
+          class="forum-btn"
+          data-testid="mod-queue-step-up-verify"
+          [routerLink]="mfaChallengeRoute"
+          [queryParams]="{ returnTo: mfaReturnTo() }"
+        >Verify with a second factor</a>
+      </div>
+    </div>
+  } @else if (error()) {
+    <p class="forum-error" data-testid="mod-queue-error" role="alert">{{ error() }}</p>
+  } @else if (queue(); as q) {
+    @if (q.available) {
+      <p class="queue__count" data-testid="mod-queue-count" role="status">
+        <strong>{{ q.depth }}</strong> {{ q.depth === 1 ? 'post is' : 'posts are' }} waiting for review.
+      </p>
+    } @else {
+      <p class="forum-muted" data-testid="mod-queue-unavailable" role="status">
+        The queue count is unavailable right now. This is not the same as an empty queue.
+      </p>
+    }
+  }
+
+  <div class="queue__actions">
+    <button
+      type="button"
+      class="forum-btn forum-btn--ghost"
+      data-testid="mod-queue-refresh"
+      [disabled]="loading()"
+      (click)="load()"
+    >Check again</button>
+  </div>
+}
