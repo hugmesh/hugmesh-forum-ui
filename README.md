@@ -64,8 +64,9 @@ organization.
   [Deployment](#deployment).
 - CI runs a four-stage GitLab pipeline (`test` → `e2e` → `build` → `pentest`). The
   GitHub repository is pull-mirrored into an internal GitLab instance. The only
-  GitHub Actions workflow is `release.yml`, which runs by hand (`workflow_dispatch`)
-  and pushes the image to GHCR. See [Deployment](#deployment).
+  GitHub Actions workflow is `release.yml`. It runs the unit tests and pushes the
+  image to GHCR on every push to `main` and on each `v<version>` tag. See
+  [Deployment](#deployment).
 - A Playwright + Gherkin (BDD) end-to-end harness lives under `e2e/`, next to the
   Karma/JUnit unit-test reporter used in CI. The Karma suite (273 specs, counted
   2026-10-15) passes with `npm test`, and `ng build forum` builds clean.
@@ -552,9 +553,23 @@ Permissions-Policy header. `/healthz` returns `200`.
 
 CI runs on **GitLab** (`.gitlab-ci.yml`). The GitHub repository is pull-mirrored into
 an internal GitLab instance, and the pipeline runs there. The one GitHub Actions
-workflow, `.github/workflows/release.yml`, has only a `workflow_dispatch` trigger. It
-builds the image and pushes it to `ghcr.io/hugmesh/hugmesh-forum-ui`, tagged with the
-given tag or the short commit SHA, and as `latest`.
+workflow, `.github/workflows/release.yml`, publishes `ghcr.io/hugmesh/hugmesh-forum-ui`.
+It first runs the same Karma unit tests as the GitLab `test` job, then:
+
+- On a push to `main`, it pushes the tags `main` and `sha-<first 12 hex of the commit>`.
+- On a `v<version>` tag, it pushes `<version>`, `beta` (for beta versions) and
+  `sha-<12 hex>`, and creates a GitHub release marked as a prerelease and not latest.
+  The tag must equal `v` plus the `version` in `package.json` (and
+  `package-lock.json`), and it must point at a commit on `main`. A version tag that
+  is already in the registry is never overwritten.
+- A manual run (`workflow_dispatch`) on `main` or on a `v*` tag does the same as the
+  matching push. Any other branch or tag is refused.
+- It never pushes `latest`, and it has no pull-request trigger.
+
+Its jobs run on the self-hosted runner only when the repository variable
+`RUNS_ON_PUBLISH` holds a runner label list (for example
+`["self-hosted","Linux","X64"]`) and the run is for `main` or a `v*` tag. Otherwise
+they run on GitHub's hosted `ubuntu-latest`.
 
 The pipeline has **four stages** (`stages: [test, e2e, build, pentest]`):
 
@@ -581,6 +596,15 @@ The pipeline has **four stages** (`stages: [test, e2e, build, pentest]`):
 The built image deploys to the `hugmesh-frontend` namespace, behind the front-end
 gateway at `/social/forum`. See `deploy/` for the Kubernetes manifests (`Deployment`,
 `Service`, `HorizontalPodAutoscaler`, Kustomize base).
+
+### Versions
+
+The version in `package.json` is the image version. It uses
+`MAJOR.MINOR.PATCH-beta.N`; the current version is `0.2.0-beta.1` (built and tested,
+not yet proven on a live mesh). To publish a beta, set the new version in
+`package.json` and `package-lock.json` (for example
+`npm version 0.2.0-beta.2 --no-git-tag-version`), merge that to `main`, then push an
+annotated tag `v0.2.0-beta.2` on that commit. A fix during a beta raises `N`.
 
 ## Related HugMesh repositories
 
