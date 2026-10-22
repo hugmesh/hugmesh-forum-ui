@@ -1,6 +1,6 @@
 {
   "name": "@hugmesh/forum",
-  "version": "0.1.0",
+  "version": "0.2.0-beta.1",
   "description": "Forum (phpBB-backed) Angular micro-frontend (native-federation remote) for the hugmesh.net host; mounted at /social/forum.",
   "license": "MIT",
   "private": true,
