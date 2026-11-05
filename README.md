@@ -224,13 +224,21 @@ This remote's half of the contract is in `src/app/step-up.ts`:
   denial must never offer an MFA prompt.
 - **Offer.** `TopicDetailComponent` answers a `StepUpRequiredError` with an inline
   notice and loads login-ui's federated step-up dialog IN PLACE
-  (hugmesh-generator#347 decisions 21/35): `loadRemoteModule` against the
-  HARDCODED `/login/remoteEntry.json` (`LOGIN_REMOTE_ENTRY` in
-  `src/app/login-remote.ts`, pinned by `login-remote.spec.ts`; never taken from a
-  manifest, a `window` global or a config), exposed module `./mfa-step-up`,
-  resolved through login-ui's `loadMfaStepUpComponent()` and mounted by
-  `MfaStepUpOutletDirective` with the dialog's own cancel turned off (the page's
-  "Not now" is the single dismiss). The offer performs nothing. When the dialog
+  (hugmesh-generator#347 decisions 21/35) from the HARDCODED
+  `/login/remoteEntry.json` (`LOGIN_REMOTE_ENTRY` in `src/app/login-remote.ts`,
+  pinned by `login-remote.spec.ts`; never taken from a manifest, a `window`
+  global or a config), exposed module `./mfa-step-up`, resolved through
+  login-ui's `loadMfaStepUpComponent()` and mounted by `MfaStepUpOutletDirective`
+  with the dialog's own cancel turned off (the page's "Not now" is the single
+  dismiss). The load goes through the page's es-module-shims import map
+  (`importShim`), NOT this bundle's `loadRemoteModule`: the native-federation
+  runtime is never a shared external, so under the host shell this remote's copy
+  of it was never initialised and `loadRemoteModule` awaits forever, and its
+  orchestrator cannot read the host's (newer) `globalThis.__NATIVE_FEDERATION__`
+  storage either — both measured 2026-11-04 (see `login-remote.ts`). The loader
+  maps, scoped to `/login/`, only the shared packages the page cannot already
+  resolve and leaves every singleton on the host's copy. The offer performs
+  nothing. When the dialog
   emits `satisfied`, the IDENTICAL moderation write is retried exactly once — no
   token, no header — and applied; a retry refused with the step-up contract again
   is not re-offered the dialog. When the remote load is rejected, or the dialog
