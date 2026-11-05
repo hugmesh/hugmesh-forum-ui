@@ -24,20 +24,20 @@
 #     surface (the admin console talks to admin-bff's /bff/admin/forum/**), so
 #     that path group is only reachable here as a fetch.
 #
-# Box 2 of #3 (generator#347 decisions 21/35, operator 2026-09-17) is NOT landed:
-# the topic page must load login-ui's federated `./mfa-step-up` from the
-# HARDCODED `/login/remoteEntry.json` in place, and DEGRADE to today's ?returnTo=
-# link whenever that load is rejected. Two rows pin it:
-#   - `@fixme` "…loads login-ui's federated challenge in place": asserts the
-#     CORRECT behaviour (the remote entry is requested and login-ui's
-#     `mfa-challenge-view` renders) and ONLY login-ui's `mfa-challenge-*` testids,
-#     so it cannot be satisfied by today's link. It turns green, unmodified, the
-#     day box 2 merges. (The federated component makes no /bff/mfa call on mount,
-#     so it renders even while MFA ships dark; dark is reached only on submit.)
+# Box 2 of #3 (generator#347 decisions 21/35, operator 2026-09-17) is landed:
+# the topic page loads login-ui's federated `./mfa-step-up` from the HARDCODED
+# `/login/remoteEntry.json` (src/app/login-remote.ts) in place, retries the
+# identical write once after a satisfied challenge, and DEGRADES to the
+# ?returnTo= link whenever that load is rejected. Two rows pin it:
+#   - "…loads login-ui's federated challenge in place": asserts the remote entry
+#     is requested and login-ui's `mfa-challenge-view` renders — ONLY login-ui's
+#     `mfa-challenge-*` testids, so the link alone cannot satisfy it. (The
+#     federated component makes no /bff/mfa call on mount, so it renders even
+#     while MFA ships dark; dark is reached only on submit.)
 #   - "…degrades to the returnTo link": the remote entry is made unfetchable and
-#     the link must still be offered. This PASSES TODAY because the link is
-#     unconditional; it is a fence for the wiring (the decided fallback must
-#     survive), which is why it is not `@fixme`.
+#     the link must still be offered. The link is rendered in every mode (as the
+#     primary action in fallback mode, a secondary one under the mounted dialog),
+#     so this row is the fence for the decided fallback.
 #
 # The ROLE_SUPERADMIN row of the admin surface is driven by the `superadmin`
 # persona (tests/helpers/roles.ts), spelled as hugmesh-admin-ui and
@@ -154,7 +154,6 @@ Feature: Forum moderation writes pause on the platform's step-up contract
     And "bare-mod" does not see the "mod-lock-toggle" control
     And "bare-mod" is not offered the forum step-up check
 
-  @fixme
   Scenario: the step-up refusal loads login-ui's federated challenge in place
     Given "forum-mod" has a seeded session
     And the forum serves the unlocked topic 77 to "forum-mod"

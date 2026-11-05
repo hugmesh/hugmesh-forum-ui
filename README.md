@@ -222,12 +222,30 @@ This remote's half of the contract is in `src/app/step-up.ts`:
   the gateway's `X-Route-Denied`) matches neither and surfaces as before. A routine
   denial must never offer an MFA prompt.
 - **Offer.** `TopicDetailComponent` answers a `StepUpRequiredError` with an inline
-  notice and a link to the platform's challenge screen,
-  `/login/mfa/challenge?returnTo=<this topic>` (hugmesh-login-ui, mounted by the host
-  at `/login`). It performs nothing. After verifying, login-ui navigates back and the
-  moderator repeats the action. The route is an absolute host route, so the
-  standalone dev shell (`ng serve forum`), which mounts no login remote, cannot
-  follow it.
+  notice and loads login-ui's federated step-up dialog IN PLACE
+  (hugmesh-generator#347 decisions 21/35) from the HARDCODED
+  `/login/remoteEntry.json` (`LOGIN_REMOTE_ENTRY` in `src/app/login-remote.ts`,
+  pinned by `login-remote.spec.ts`; never taken from a manifest, a `window`
+  global or a config), exposed module `./mfa-step-up`, resolved through
+  login-ui's `loadMfaStepUpComponent()` and mounted by `MfaStepUpOutletDirective`
+  with the dialog's own cancel turned off (the page's "Not now" is the single
+  dismiss). The load goes through the page's es-module-shims import map
+  (`importShim`), NOT this bundle's `loadRemoteModule`: the native-federation
+  runtime is never a shared external, so under the host shell this remote's copy
+  of it was never initialised and `loadRemoteModule` awaits forever, and its
+  orchestrator cannot read the host's (newer) `globalThis.__NATIVE_FEDERATION__`
+  storage either — both measured 2026-11-04 (see `login-remote.ts`). The loader
+  maps, scoped to `/login/`, only the shared packages the page cannot already
+  resolve and leaves every singleton on the host's copy. The offer performs
+  nothing. When the dialog
+  emits `satisfied`, the IDENTICAL moderation write is retried exactly once — no
+  token, no header — and applied; a retry refused with the step-up contract again
+  is not re-offered the dialog. When the remote load is rejected, or the dialog
+  reports that MFA ships dark (`unavailable`), the offer degrades to the platform's
+  challenge screen, `/login/mfa/challenge?returnTo=<this topic>` (hugmesh-login-ui,
+  mounted by the host at `/login`); that link stays reachable in every mode. The
+  route is an absolute host route, so the standalone dev shell (`ng serve forum`),
+  which mounts no login remote, cannot follow it.
 
 **The BFF half has shipped.** `hugmesh-forum-bff-api` PR #17 (closing its
 issue #15) makes the BFF answer an MFA denial with a `403` carrying
@@ -492,11 +510,12 @@ An author with no profile, or any lookup error, renders as a plain post.
 - Step-up multi-factor authentication on moderation: the BFF gate is merged (forum-bff
   PR #11, live once `app.mfa.enabled` flips), the BFF emits the `X-Step-Up-Required`
   signal on an MFA denial (forum-bff PR #17), and this remote detects it and offers
-  the challenge (see [Step-up (MFA) on moderation](#step-up-mfa-on-moderation)).
-  Still open, tracked on issue #3 of this repository: loading login-ui's challenge in
-  place instead of the navigate-away link. The e2e scenario for it in
-  `e2e/features/forum/moderation-step-up.feature` is tagged `@fixme` and asserts the
-  in-place behavior, so it stays red until that lands.
+  the challenge (see [Step-up (MFA) on moderation](#step-up-mfa-on-moderation)),
+  loading login-ui's federated challenge in place from the hardcoded
+  `/login/remoteEntry.json` and degrading to the navigate-away link when that load
+  is rejected. The e2e scenarios for both live in
+  `e2e/features/forum/moderation-step-up.feature`. Still open on issue #3: a
+  person's end-to-end check on a mesh with `app.mfa.enabled` on.
 - Moving the shared session out of `localStorage`: this remote now hydrates from the
   authoritative `GET /bff/session` and reads the `hug.session` mirror only as seed
   and fallback (see [Auth & token model](#auth--token-model-no-login-ui)). Dropping
