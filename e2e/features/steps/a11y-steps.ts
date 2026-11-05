@@ -4,8 +4,10 @@
 // REAL shell + component markup:
 //   - app.component.html renders `<a class="skip" href="#main-content">` →
 //     `<main id="main-content" tabindex="-1">` (the skip-link + focus target).
-//   - forum-index.component.html renders `<nav aria-label="Forum search">` and
-//     `<section class="forum-categories" role="region" aria-labelledby=…>`.
+//   - forum-index.component.html renders
+//     `<section class="forum-categories" role="region" aria-labelledby=…>` and
+//     NO search nav (the forum has no search surface; forum-bff-api maps no
+//     /search — hugmesh-forum-ui#19).
 //   - topics-list.component.html renders `<nav aria-label="Topic pagination">`
 //     with prev/next buttons (the roving keyboard surface).
 
@@ -41,9 +43,12 @@ Then('activating the skip link moves focus to the main region {string}', async (
 
 // ── ARIA landmarks / regions ─────────────────────────────────────────────────
 
-Then('the forum search nav has an accessible name {string}', async ({}, username: string) => {
+Then('there is no forum search nav {string}', async ({}, username: string) => {
   const page = pageOf(username);
-  await expect(page.locator('nav[aria-label="Forum search"]')).toBeVisible();
+  // The old `<nav aria-label="Forum search">` linked to a page whose only
+  // request was a guaranteed 404; both are gone (hugmesh-forum-ui#19).
+  await expect(page.locator('nav[aria-label="Forum search"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="forum-search-link"]')).toHaveCount(0);
 });
 
 Then('the categories region has an accessible name {string}', async ({}, username: string) => {
@@ -52,13 +57,6 @@ Then('the categories region has an accessible name {string}', async ({}, usernam
   // aria-labelledby points at the #forum-categories-heading <h2>.
   await expect(region).toHaveAttribute('aria-labelledby', 'forum-categories-heading');
   await expect(page.locator('#forum-categories-heading')).toBeVisible();
-});
-
-Then('the search form has the search role {string}', async ({}, username: string) => {
-  const page = pageOf(username);
-  // forum-search.component.html: <form role="search"> with a labelled input.
-  await expect(page.locator('form[role="search"]')).toBeVisible();
-  await expect(page.locator('label[for="forum-search-input"]')).toHaveCount(1);
 });
 
 // ── Focus restoration after a route change ───────────────────────────────────

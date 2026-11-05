@@ -172,7 +172,7 @@ export class CreateTopicComponent implements OnInit, AfterViewChecked {
       // standalone at the origin root, and off the remote entirely under the
       // host shell, where this remote is mounted at /social/forum and the
       // injected Router is the SHELL's. Every `../` link in this repo's
-      // TEMPLATES (forum-index, topics-list, forum-search, topic-detail) was
+      // TEMPLATES (forum-index, topics-list, topic-detail) was
       // already right for exactly that reason; this one call site was not.
       void this.router.navigate(['../topics', topic.id], { relativeTo: this.route });
     } catch {
