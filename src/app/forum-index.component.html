@@ -33,10 +33,6 @@
   </div>
 }
 
-<nav class="forum-index__search" aria-label="Forum search">
-  <a routerLink="../search" data-testid="forum-search-link">Search the forum</a>
-</nav>
-
 @if (loading()) {
   <p class="forum-muted" role="status">Loading categories…</p>
 } @else if (error()) {

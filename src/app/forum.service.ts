@@ -82,11 +82,6 @@ export interface CreateReplyParams {
   body: string;
 }
 
-export interface ForumSearchResult {
-  topics: ForumTopic[];
-  posts: ForumPost[];
-}
-
 /** The moderation queue COUNT the moderator-reachable endpoint returns. `depth`
  *  is non-null only when `available`; a degraded/unreadable source is never
  *  reported as a zero. */
@@ -212,8 +207,9 @@ function sortTopics(topics: ForumTopic[], sort: NonNullable<PageQuery['sort']>):
  * sort} query params the BFF spec does not yet declare) stay on the hand-written
  * {@code fetch} path so their wire behaviour is byte-identical — they migrate
  * once the BFF spec grows those parameters. {@link getCategory} has no BFF
- * endpoint and resolves from {@link listCategories}; {@link search} has none
- * either and still resolves empty.
+ * endpoint and resolves from {@link listCategories}. There is no search: the
+ * BFF maps no {@code /search}, so this service exposes no call to it (the
+ * guard spec {@code no-dead-search-call.spec.ts} keeps it that way).
  *
  * <p><b>Wire shapes.</b> The BFF wraps every read in an envelope
  * ({@code {categories}}, {@code {topics}}, {@code {topic, replies}}) and writes
@@ -316,12 +312,6 @@ export class ForumService {
     const topic = unwrapEntity(body, 'topic', 'topic');
     const replies = isObj(body) ? unwrapList(body, Array.isArray(body['replies']) ? 'replies' : 'posts') : [];
     return { topic: toTopic(topic), posts: replies.map(toPost) };
-  }
-
-  search(q: string): Promise<ForumSearchResult> {
-    // Still a dead call: forum-bff-api maps no /search, so this resolves the
-    // empty fallback on the 404. Tracked on hugmesh-forum-ui#19.
-    return this.getJson<ForumSearchResult>('/search', { q }, { topics: [], posts: [] });
   }
 
   // ----- writes (gated by canPost server-side AND in the UI) --------------

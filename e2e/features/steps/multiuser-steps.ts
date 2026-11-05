@@ -176,13 +176,19 @@ Then('{string} sees the topic {string} in the category list', async ({ user }, u
   await expect(page.locator('.forum-topic-row__title', { hasText: title }).first()).toBeVisible();
 });
 
-Then('{string} finds the topic {string} via search', async ({ user }, username: string, title: string) => {
-  const page = pageOf(user(username).username);
-  await page.goto('/social/forum/search', { waitUntil: 'domcontentloaded' });
-  await page.locator('[data-testid="forum-search-input"]').fill(title);
-  await page.locator('[data-testid="forum-search-submit"]').click();
-  await expect(page.locator('.search-group a', { hasText: title }).first()).toBeVisible();
-});
+Then(
+  '{string} opens the topic {string} that {string} landed on',
+  async ({ user }, username: string, title: string, author: string) => {
+    // Cross-user reach without a search surface (forum-bff-api maps no /search,
+    // hugmesh-forum-ui#19): the author's page is already on the new topic's
+    // URL, so the second identity opens that URL in its OWN context.
+    const topicUrl = pageOf(user(author).username).url();
+    expect(topicUrl).toMatch(/\/social\/forum\/topics\/\d+/);
+    const page = pageOf(user(username).username);
+    await page.goto(topicUrl, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('h1')).toHaveText(title);
+  },
+);
 
 // ── edit / delete round-trips with cross-user consequence ────────────────────
 

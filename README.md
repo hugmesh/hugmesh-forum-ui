@@ -45,7 +45,7 @@ organization.
 ## Features
 
 - The `forum` remote exposes the full `FORUM_ROUTES` surface: index, categories,
-  topics, create-topic, search, moderation, profile. It has an affordance-level role
+  topics, create-topic, moderation, profile. It has an affordance-level role
   gate, an embedded federated user-profile fragment, a sandboxed announcements
   banner, server-sanitized post bodies with a DOMPurify preview, `--hug-*`/`--forum-*`
   brand tokens, and a standards-based accessibility baseline.
@@ -69,7 +69,7 @@ organization.
   [Deployment](#deployment).
 - A Playwright + Gherkin (BDD) end-to-end harness lives under `e2e/`, next to the
   Karma/JUnit unit-test reporter used in CI. The Karma suite (273 specs, counted
-  2026-10-15) passes with `npm test`, and `ng build forum` builds clean.
+  2026-11-04) passes with `npm test`, and `ng build forum` builds clean.
   A 1-in-3 flake in the VN specs in `topic-detail.component.spec.ts` was diagnosed
   and fixed on 2026-08-14: `topic-detail.component.ts` now calls `markForCheck()` on
   the async VN/topic state writes. The `render()` helper's comment has the timeline.
@@ -168,11 +168,10 @@ fragment and the VN character and sticker endpoints.
 
 | route | component | purpose |
 | --- | --- | --- |
-| `''` | `ForumIndexComponent` | the announcements banner + category list + "New topic" / "Search" links |
+| `''` | `ForumIndexComponent` | the announcements banner + category list + the "New topic" link |
 | `categories/:id` | `TopicsListComponent` | paginated topics in a category (sort: latest / oldest / replies; prev/next pager) |
 | `topics/:id` | `TopicDetailComponent` | the topic + ordered posts + inline reply form; edit/delete for the post's owner or a moderator; lock/unlock for a moderator |
 | `create-topic` | `CreateTopicComponent` | new topic (category + Markdown title/body + live preview) |
-| `search` | `ForumSearchComponent` | topic/post search (the BFF maps no `/search` yet, so it resolves empty) |
 | `moderation` | `ModerationQueueComponent` | moderation queue depth for moderators (a count, not the queued posts) |
 | `profile/:subject` | `ForumProfileComponent` | embeds the platform's federated user-profile fragment for the poster |
 
@@ -330,7 +329,7 @@ The markup is plain and standards-based. This remote uses no custom
 - Screen-reader-only labels use the shared `.sr` visually-hidden class (declared in
   `styles.scss`).
 - Landmarks: one `h1` per route; `role="region"` with `aria-labelledby` or
-  `aria-label`; a `role="search"` form; nav landmarks with `aria-label`.
+  `aria-label`; nav landmarks with `aria-label`.
 - Status and errors: `role="status"` for loading, `role="alert"` for errors, and
   `aria-live` (`polite` for counts and outcomes, `assertive` for submit errors).
 - Forms: `aria-invalid` + `aria-describedby` on the create-topic fields, with a live
@@ -365,8 +364,8 @@ spec-covered reads and writes go to a committed **ng-openapi-gen** client under
 `src/app/api/`, with `ForumService` as a thin wrapper. This is the standard HugMesh
 pattern for typed BFF clients. `ForumService` injects the generated client and hands
 `listCategories` / `createTopic` / `createReply` / `editPost` / `deletePost` /
-`moderateTopic` / `getModerationQueueDepth` straight to it. `listTopics`, `getTopic`
-and `search` stay on hand-written `fetch` calls, because the BFF spec does not yet
+`moderateTopic` / `getModerationQueueDepth` straight to it. `listTopics` and `getTopic`
+stay on hand-written `fetch` calls, because the BFF spec does not yet
 declare their parameters or operations. `getCategory` makes no call of its own: it
 resolves the category from `listCategories`. To regenerate the client against an updated contract, run
 `npm run gen:spec` (see [Regenerating the API
@@ -382,8 +381,10 @@ here are the stable contract for consumers.
 writes answer `{"topic"}` / `{"reply"}` / `{"post"}`. `ForumService` unwraps
 these (the helpers above the class) into the public DTOs, pages and sorts
 topics client-side, and resolves `getCategory` from the category list. The BFF
-has no `/search` mapping, so `search()` still resolves empty. The spec fixtures
-use the BFF's real response bodies.
+has no `/search` mapping, so the UI has no search surface and no `search()` call;
+`no-dead-search-call.spec.ts` renders every route with the real service and
+asserts nothing is sent to `/bff/forum/search`. The spec fixtures use the BFF's
+real response bodies.
 
 ## Multi-tenancy
 

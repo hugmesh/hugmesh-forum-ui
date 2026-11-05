@@ -4,9 +4,9 @@ Feature: Forum accessibility contracts (a11y)
   # markup contracts grounded against the components:
   #   - app.component.html      : skip-link <a class="skip" href="#main-content">
   #                               -> <main id="main-content" tabindex="-1">
-  #   - forum-index             : <nav aria-label="Forum search">,
-  #                               <section role="region" aria-labelledby=…>
-  #   - forum-search            : <form role="search"> + labelled input
+  #   - forum-index             : <section role="region" aria-labelledby=…>
+  #                               (no search nav: the forum has no search
+  #                               surface, forum-bff-api maps no /search, #19)
   #   - topics-list             : <nav aria-label="Topic pagination"> with
   #                               aria-label'd prev/next + aria-live page status
   # @cluster (ships dark): needs the host shell serving the remote so the skip
@@ -24,13 +24,8 @@ Feature: Forum accessibility contracts (a11y)
   Scenario: The forum index exposes named landmarks and regions
     Given "forum-user" has a seeded session
     When "forum-user" navigates to "/social/forum"
-    Then the forum search nav has an accessible name "forum-user"
-    And the categories region has an accessible name "forum-user"
-
-  Scenario: The search form carries the search role and a labelled input
-    Given "forum-user" has a seeded session
-    When "forum-user" navigates to "/social/forum/search"
-    Then the search form has the search role "forum-user"
+    Then the categories region has an accessible name "forum-user"
+    And there is no forum search nav "forum-user"
 
   Scenario: The topic pagination is keyboard-reachable with accessible names
     Given "forum-user" has a seeded session
@@ -43,5 +38,5 @@ Feature: Forum accessibility contracts (a11y)
   Scenario: Focus is restored to the main region after a route change
     Given "forum-user" has a seeded session
     When "forum-user" navigates to "/social/forum"
-    And "forum-user" navigates to "/social/forum/search"
+    And "forum-user" navigates to "/social/forum/categories/1"
     Then focus is restored to the main region after navigation "forum-user"

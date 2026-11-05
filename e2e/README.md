@@ -29,11 +29,11 @@ dark.
 | `forum/cross-domain-isolation.feature` | CROSS-USER multi-tenant — anonymous floor + per-brand BFF DENY (domain-B → domain-A) |
 | `forum/vn-profile.feature` | VN layer basics — editor entry point, skin/sprite render, sticker insert + 8/post cap, read-aloud toggle, sticker-endpoint fail-soft |
 | `forum/vn-combination.feature` | VN COMBINATION sweep — 5 skins × accent on/off at the post-card boundary, sticker token counts (0/1/8/9-capped/malformed/code-block), full skin × voice editor save matrix asserting the PUT payload, read-aloud exclusivity, VN-lookup-outage fail-soft, Escape/focus-return + sticker-picker keyboard a11y, phone/tablet no-h-scroll + 44px touch targets |
-| `a11y/accessibility.feature` | skip-link → `#main-content`, named landmarks/regions, `role="search"`, pagination keyboard reachability + focus restore |
+| `a11y/accessibility.feature` | skip-link → `#main-content`, named landmarks/regions (and no search nav), pagination keyboard reachability + focus restore |
 | `forum/reply-visibility.feature` | MULTIUSER CONSEQUENCE — one user's REAL reply becomes visible to a second identity; interleaved replies keep chronological order |
 | `forum/post-lifecycle.feature` | MULTIUSER CONSEQUENCE — owner edit → `(edited)` marker seen by a second reader; owner delete → gone for both; moderator deletes a victim's post (victim-creates-first) |
 | `forum/moderation-consequence.feature` | MULTIUSER CONSEQUENCE — a moderator lock/unlock adds/removes the author's reply form; bare-mod and plain-user see no lock control |
-| `forum/create-topic-journey.feature` | MULTIUSER — full create journey (form → POST → navigate) plus cross-user reach: a second identity finds the topic via search |
+| `forum/create-topic-journey.feature` | MULTIUSER — full create journey (form → POST → navigate) plus cross-user reach: a second identity opens the new topic's page |
 | `forum/vn-cross-user.feature` | MULTIUSER — the author's saved voicebox skin/sprite as rendered in ANOTHER reader's page; the reader's own posts stay `classic` |
 | `forum/profile-embed.feature` | MULTIUSER — author link → the federated user remote's `./profile` fragment; the remote-unreachable error alert |
 | `forum/announcements.feature` | MULTIUSER — published forum announcement seen by a logged-in user, dismiss-once persistence, pinned (non-dismissible) variant, anonymous sees none |
@@ -68,7 +68,7 @@ npx playwright test --list # 0 tests with the default 'not @cluster' filter (shi
 
 To prove every scenario *parses and is discoverable*, use a no-filter override config
 (the `e2e:bdd` GitLab job does exactly this): generate a temp config without the
-`tags` filter, then run `bddgen -c` and `playwright test --list -c`. That lists **103 tests across 17 feature files** (counted 2026-10-07; outline rows count as tests).
+`tags` filter, then run `bddgen -c` and `playwright test --list -c`. That lists **102 tests across 17 feature files** (counted 2026-11-04; outline rows count as tests).
 
 ## Run live (later wave; needs a cluster)
 

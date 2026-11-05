@@ -8,7 +8,8 @@ Feature: Forum role-gated surfaces (USER-SITUATIONAL ALLOW + DENY)
   # scenario so `playwright test --list` proves the Gherkin parses.
   #
   # Surfaces grounded against src/app/*.component.html:
-  #   forum-index   -> [data-testid="forum-new-topic"], "forum-search-link"
+  #   forum-index   -> [data-testid="forum-new-topic"]; the old "forum-search-link"
+  #                    is asserted ABSENT (forum-bff-api maps no /search, #19)
   #   topics-list   -> "topics-new-topic"
   #   topic-detail  -> "reply-body"/"reply-submit" (ALLOW) | "reply-gated" (DENY)
   #   create-topic  -> "create-title"/"create-body"/"create-submit" | "create-gated"
@@ -22,7 +23,7 @@ Feature: Forum role-gated surfaces (USER-SITUATIONAL ALLOW + DENY)
     When "forum-user" navigates to "/social/forum"
     Then "forum-user" sees the forum index heading
     And "forum-user" sees the "forum-new-topic" control
-    And "forum-user" sees the "forum-search-link" control
+    And "forum-user" does not see the "forum-search-link" control
 
   Scenario: A forum-role user can open and use the reply form on an unlocked topic
     Given "forum-user" has a seeded session
