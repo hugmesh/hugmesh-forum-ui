@@ -95,26 +95,61 @@
 
   @if (stepUp(); as s) {
     <!-- The BFF refused the moderation write with the platform's step-up
-         contract. Offer the platform's MFA challenge (login-ui, mounted by the
-         host at /login) with a returnTo back to this topic; nothing was performed,
-         so the moderator re-issues the action after verifying. -->
-    <div class="topic__stepup" role="group" aria-labelledby="mod-step-up-title" data-testid="mod-step-up">
+         contract. Nothing was performed. Offer the second-factor check
+         (issue #3 box 2, generator#347 decisions 21/35): login-ui's federated
+         ./mfa-step-up dialog, loaded from the hardcoded /login/remoteEntry.json
+         and mounted IN PLACE; a satisfied challenge retries the identical write
+         once. When that load is rejected, degrade to the platform's challenge
+         screen (login-ui, mounted by the host at /login) with a returnTo back to
+         this topic, and the moderator re-issues the action after verifying. -->
+    <div class="topic__stepup" role="group" aria-labelledby="mod-step-up-title" data-testid="mod-step-up"
+         [attr.data-mode]="stepUpMode()">
       <h2 id="mod-step-up-title" class="topic__stepup-title">Second-factor check required</h2>
-      <p class="forum-muted">
-        Verify with your authenticator app, a passkey or a recovery code, then come back and
-        {{ s.action }} the topic again. Nothing has been changed yet.
-      </p>
+      @switch (stepUpMode()) {
+        @case ('federated') {
+          <p class="forum-muted">
+            Verify with your authenticator app, a passkey or a recovery code; the topic is then
+            {{ s.action === 'lock' ? 'locked' : 'unlocked' }} for you. Nothing has been changed yet.
+          </p>
+          @if (stepUpChallenge(); as challenge) {
+            <div class="topic__stepup-challenge" data-testid="mod-step-up-challenge">
+              <ng-container
+                [hugMfaStepUpOutlet]="challenge"
+                (satisfied)="retryAfterStepUp()"
+                (dismissed)="dismissStepUp()"
+                (unavailable)="stepUpUnavailable()"
+              />
+            </div>
+          }
+        }
+        @case ('loading') {
+          <p class="forum-muted" role="status" data-testid="mod-step-up-loading">
+            Loading the second-factor check… Nothing has been changed yet.
+          </p>
+        }
+        @default {
+          <p class="forum-muted">
+            Verify with your authenticator app, a passkey or a recovery code, then come back and
+            {{ s.action }} the topic again. Nothing has been changed yet.
+          </p>
+        }
+      }
       <div class="topic__stepup-actions">
+        <!-- The platform challenge page is ALWAYS reachable (the decided
+             fallback): primary while the federated dialog is absent, a
+             secondary escape hatch while it is mounted in place. -->
         <a
           class="forum-btn"
+          [class.forum-btn--ghost]="stepUpMode() === 'federated'"
           data-testid="mod-step-up-verify"
           [routerLink]="mfaChallengeRoute"
           [queryParams]="{ returnTo: mfaReturnTo() }"
-        >Verify with a second factor</a>
+        >{{ stepUpMode() === 'federated' ? 'Verify on the login page instead' : 'Verify with a second factor' }}</a>
         <button
           type="button"
           class="forum-btn forum-btn--ghost"
           data-testid="mod-step-up-dismiss"
+          [disabled]="busy()"
           (click)="dismissStepUp()"
         >Not now</button>
       </div>

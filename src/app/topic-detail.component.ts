@@ -5,6 +5,7 @@ import {
   ElementRef,
   OnDestroy,
   OnInit,
+  Type,
   inject,
   signal,
 } from '@angular/core';
@@ -26,6 +27,8 @@ import { insertAtCursor, stickerBodyUrl, stickerToken, transformStickerTokens } 
 import { isOwnerBlindImgRef } from './character-avatar';
 import { StickerPickerComponent } from './sticker-picker.component';
 import { MFA_CHALLENGE_ROUTE, StepUpRequiredError } from './step-up';
+import { MfaStepUpComponentLike, mfaStepUpRemoteLoader } from './login-remote';
+import { MfaStepUpOutletDirective } from './mfa-step-up-outlet.directive';
 
 /** Read-aloud cap: at most this many characters are handed to speechSynthesis
  *  per activation. Rationale: a pathological (or merely huge) post would
@@ -74,7 +77,7 @@ export const speechAccess = {
 @Component({
   selector: 'hug-forum-topic-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, StickerPickerComponent],
+  imports: [CommonModule, FormsModule, RouterLink, StickerPickerComponent, MfaStepUpOutletDirective],
   templateUrl: './topic-detail.component.html',
   styleUrl: './topic-detail.component.scss',
 })
@@ -101,10 +104,33 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
 
   /** A moderation action the BFF refused with the platform's step-up contract
    *  ({@link StepUpRequiredError}), or null. While set, the template offers the
-   *  platform's MFA challenge ({@link MFA_CHALLENGE_ROUTE}) with a `returnTo`
-   *  back to this topic; the moderator re-issues the action after verifying. */
+   *  second-factor check: login-ui's federated dialog in place when it loads
+   *  ({@link stepUpChallenge}), else the platform's challenge screen
+   *  ({@link MFA_CHALLENGE_ROUTE}) with a `returnTo` back to this topic. */
   readonly stepUp = signal<{ action: 'lock' | 'unlock' } | null>(null);
   readonly mfaChallengeRoute = MFA_CHALLENGE_ROUTE;
+
+  /**
+   * How the offer is being presented (issue #3 box 2, generator#347 decisions
+   * 21/35):
+   *  - `loading`   — login-ui's `./mfa-step-up` is being fetched from the
+   *                  hardcoded `/login/remoteEntry.json`;
+   *  - `federated` — the dialog is mounted in place ({@link stepUpChallenge});
+   *                  a satisfied challenge retries the identical write ONCE;
+   *  - `link`      — the decided fallback: the remote load was rejected (or the
+   *                  surface answered that MFA ships dark, or the single retry
+   *                  was refused again), so today's `?returnTo=` link is the
+   *                  primary action.
+   * The `?returnTo=` link itself is rendered in EVERY mode (demoted to a
+   * secondary action while the dialog is mounted), so the platform challenge
+   * page is always one click away and the fallback cannot be lost.
+   */
+  readonly stepUpMode = signal<'loading' | 'federated' | 'link'>('link');
+  /** The resolved federated challenge class while {@link stepUpMode} is `federated`. */
+  readonly stepUpChallenge = signal<Type<MfaStepUpComponentLike> | null>(null);
+  /** Guards a remote load that settles after the offer it belonged to was
+   *  dismissed or replaced: only the latest offer may change the mode. */
+  private stepUpOfferSeq = 0;
 
   /** Per-post inline edit state (postId → draft body). */
   readonly editingId = signal<number | null>(null);
@@ -217,7 +243,7 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
    *
    * A {@link StepUpRequiredError} — the BFF's MFA step-up gate refusing the
    * write with the platform's step-up contract — is NOT a generic failure: it
-   * sets {@link stepUp} so the template offers the platform's challenge screen.
+   * sets {@link stepUp} and {@link offerStepUp offers} the second-factor check.
    * The topic state is left untouched (nothing was performed).
    */
   async toggleLock(): Promise<void> {
@@ -226,18 +252,18 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
     const next = !d.topic.locked;
     this.busy.set(true);
     this.outcome.set(null);
-    this.stepUp.set(null);
+    this.clearStepUp();
     try {
       await this.forum.moderateTopic(d.topic.id, next ? 'lock' : 'unlock');
-      this.detail.set({ ...d, topic: { ...d.topic, locked: next } });
-      this.outcome.set({ kind: 'status', text: next ? 'Topic locked.' : 'Topic unlocked.' });
+      this.applyLock(d, next);
     } catch (e) {
       if (e instanceof StepUpRequiredError) {
-        this.stepUp.set({ action: next ? 'lock' : 'unlock' });
         this.outcome.set({
           kind: 'alert',
           text: 'This moderation action needs a fresh second-factor check before the server will accept it.',
         });
+        this.busy.set(false);
+        await this.offerStepUp(next ? 'lock' : 'unlock');
       } else {
         this.outcome.set({ kind: 'alert', text: 'Could not update the topic lock. Please try again.' });
       }
@@ -254,7 +280,92 @@ export class TopicDetailComponent implements OnInit, AfterViewChecked, OnDestroy
 
   /** Dismiss the step-up offer without verifying (nothing was performed). */
   dismissStepUp(): void {
+    this.clearStepUp();
+  }
+
+  /**
+   * The federated challenge was satisfied: the caller's own session now carries
+   * a fresh MFA stamp, so the IDENTICAL write is retried exactly once — no
+   * token, no header (the forum gate has no token leg). A retry the server
+   * accepts applies the lock and clears the offer. A retry refused with the
+   * step-up contract AGAIN is not re-offered the dialog (that would loop): the
+   * offer degrades to the `?returnTo=` link. Any other failure is the plain
+   * lock failure.
+   */
+  async retryAfterStepUp(): Promise<void> {
+    const s = this.stepUp();
+    const d = this.detail();
+    if (!s || !d) return;
+    this.stepUpChallenge.set(null);
+    this.busy.set(true);
+    try {
+      await this.forum.moderateTopic(d.topic.id, s.action);
+      this.applyLock(d, s.action === 'lock');
+      this.clearStepUp();
+    } catch (e) {
+      if (e instanceof StepUpRequiredError) {
+        this.stepUpOfferSeq++;
+        this.stepUpMode.set('link');
+        this.outcome.set({
+          kind: 'alert',
+          text: 'The server still asks for a second-factor check. Verify on the platform challenge page, then try again.',
+        });
+      } else {
+        this.clearStepUp();
+        this.outcome.set({ kind: 'alert', text: 'Could not update the topic lock. Please try again.' });
+      }
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** The embedded dialog reported that MFA ships dark here (503): unmount it and
+   *  degrade to the `?returnTo=` link, which is what the platform offers today. */
+  stepUpUnavailable(): void {
+    if (!this.stepUp()) return;
+    this.stepUpOfferSeq++;
+    this.stepUpChallenge.set(null);
+    this.stepUpMode.set('link');
+  }
+
+  /**
+   * Offer the second-factor check for `action` (issue #3 box 2): load login-ui's
+   * federated `./mfa-step-up` from the HARDCODED `/login/remoteEntry.json`
+   * ({@link mfaStepUpRemoteLoader}) and mount it in place; when that load is
+   * rejected for any reason, fall back to the `?returnTo=` link. The offer
+   * itself never retries the write.
+   */
+  private async offerStepUp(action: 'lock' | 'unlock'): Promise<void> {
+    const seq = ++this.stepUpOfferSeq;
+    this.stepUp.set({ action });
+    this.stepUpChallenge.set(null);
+    this.stepUpMode.set('loading');
+    let challenge: Type<MfaStepUpComponentLike> | null = null;
+    try {
+      challenge = await mfaStepUpRemoteLoader.load();
+    } catch {
+      challenge = null;
+    }
+    // Dismissed or superseded while loading: leave the newer state alone.
+    if (seq !== this.stepUpOfferSeq || !this.stepUp()) return;
+    if (challenge) {
+      this.stepUpChallenge.set(challenge);
+      this.stepUpMode.set('federated');
+    } else {
+      this.stepUpMode.set('link');
+    }
+  }
+
+  private clearStepUp(): void {
+    this.stepUpOfferSeq++;
     this.stepUp.set(null);
+    this.stepUpChallenge.set(null);
+    this.stepUpMode.set('link');
+  }
+
+  private applyLock(d: TopicDetail, locked: boolean): void {
+    this.detail.set({ ...d, topic: { ...d.topic, locked } });
+    this.outcome.set({ kind: 'status', text: locked ? 'Topic locked.' : 'Topic unlocked.' });
   }
 
   /**

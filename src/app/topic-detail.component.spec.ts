@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of } from 'rxjs';
-import { signal } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 
 import { MAX_SPEECH_CHARS, TopicDetailComponent, speechAccess } from './topic-detail.component';
 import { ForumService, ForumPost, TopicDetail } from './forum.service';
@@ -13,6 +13,26 @@ import { CHARACTER_AVATAR_HANDLE_PATH, SELF_AVATAR_BODY_PATH, characterAvatarBod
 const AVATAR_URL = characterAvatarBodyUrl('3f2504e0-4f89-41d3-9a0c-0305e82c3301')!;
 import { StickerService } from './sticker.service';
 import { MFA_CHALLENGE_ROUTE, StepUpRequiredError } from './step-up';
+import { mfaStepUpRemoteLoader } from './login-remote';
+
+/** Stands in for login-ui's federated MfaStepUpComponent (`./mfa-step-up`): the
+ *  same testid root (`mfa-challenge-view`), the same three outputs and the
+ *  `cancellable` input the outlet turns off. */
+@Component({
+  selector: 'hug-stub-mfa-challenge',
+  standalone: true,
+  template: '<section data-testid="mfa-challenge-view">stub challenge (cancellable={{ cancellable() }})</section>',
+})
+class StubMfaChallengeComponent {
+  static readonly instances: StubMfaChallengeComponent[] = [];
+  readonly cancellable = input<boolean>(true);
+  readonly satisfied = output<void>();
+  readonly dismissed = output<void>();
+  readonly unavailable = output<void>();
+  constructor() {
+    StubMfaChallengeComponent.instances.push(this);
+  }
+}
 
 function post(over: Partial<ForumPost> = {}): ForumPost {
   return {
@@ -95,6 +115,11 @@ describe('TopicDetailComponent', () => {
     // Sticker picker probe: default = endpoint unavailable (picker hidden).
     stickers = jasmine.createSpyObj<StickerService>('StickerService', ['listOwn']);
     stickers.listOwn.and.resolveTo(null);
+    // login-ui's federated step-up dialog: default = the remote load is REJECTED
+    // (no host shell under Karma), i.e. the decided fallback — the ?returnTo= link.
+    // The federated specs below override this with resolveTo(StubMfaChallengeComponent).
+    StubMfaChallengeComponent.instances.length = 0;
+    spyOn(mfaStepUpRemoteLoader, 'load').and.rejectWith(new Error('no federation runtime'));
 
     await TestBed.configureTestingModule({
       imports: [TopicDetailComponent],
@@ -255,7 +280,7 @@ describe('TopicDetailComponent', () => {
     return new StepUpRequiredError({ retryHeader: null, via: 'legacy-phrase' }, 403, 'lock requires step-up re-authentication');
   }
 
-  it('offers the platform MFA challenge with a returnTo back to THIS topic when the BFF demands step-up', async () => {
+  it('offers the platform MFA challenge with a returnTo back to THIS topic when the federated load is rejected', async () => {
     canModerate.set(true);
     forum.moderateTopic.and.rejectWith(stepUpRefusal());
     // Under the host shell the injected Router is the SHELL's, so its url is the
@@ -271,11 +296,17 @@ describe('TopicDetailComponent', () => {
     expect(component.outcome()?.kind).toBe('alert');
     expect(component.outcome()?.text).toContain('second-factor');
     expect(component.stepUp()).toEqual({ action: 'lock' });
+    // The federated dialog was ATTEMPTED (decision 35: from the hardcoded entry)
+    // and its rejection degraded the offer to the link.
+    expect(mfaStepUpRemoteLoader.load).toHaveBeenCalledTimes(1);
+    expect(component.stepUpMode()).toBe('link');
 
     const offer = el().querySelector<HTMLElement>('[data-testid="mod-step-up"]')!;
     expect(offer).not.toBeNull();
     expect(offer.getAttribute('role')).toBe('group');
+    expect(offer.getAttribute('data-mode')).toBe('link');
     expect(offer.textContent).toContain('lock the topic again');
+    expect(offer.querySelector('[data-testid="mfa-challenge-view"]')).toBeNull();
     const verify = offer.querySelector<HTMLAnchorElement>('[data-testid="mod-step-up-verify"]')!;
     expect(verify.tagName).toBe('A');
     // The ABSOLUTE host route of login-ui's challenge screen, carrying the return URL.
@@ -316,6 +347,184 @@ describe('TopicDetailComponent', () => {
     expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
     expect(forum.moderateTopic).toHaveBeenCalledTimes(1);
     expect(component.detail()!.topic.locked).toBeFalse();
+  });
+
+  // ── step-up box 2 (generator#347 decisions 21/35): login-ui's federated dialog ──
+
+  function federatedLoadResolves(): void {
+    (mfaStepUpRemoteLoader.load as jasmine.Spy).and.resolveTo(StubMfaChallengeComponent);
+  }
+
+  function stub(): StubMfaChallengeComponent {
+    const last = StubMfaChallengeComponent.instances.at(-1);
+    if (!last) throw new Error('the federated challenge was never mounted');
+    return last;
+  }
+
+  it("mounts login-ui's federated challenge IN PLACE on the step-up refusal, keeping the link as the escape hatch", async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(mfaStepUpRemoteLoader.load).toHaveBeenCalledTimes(1);
+    expect(component.stepUpMode()).toBe('federated');
+    const offer = el().querySelector<HTMLElement>('[data-testid="mod-step-up"]')!;
+    expect(offer.getAttribute('data-mode')).toBe('federated');
+    // login-ui's own testid root renders inside the offer — the topic page did not navigate.
+    const view = offer.querySelector<HTMLElement>('[data-testid="mfa-challenge-view"]')!;
+    expect(view).not.toBeNull();
+    // The embedded dialog's own "Not now" is OFF: the page's dismiss is the single one.
+    expect(view.textContent).toContain('cancellable=false');
+    // The platform challenge page stays reachable, demoted to a secondary action.
+    const verify = offer.querySelector<HTMLAnchorElement>('[data-testid="mod-step-up-verify"]')!;
+    expect(verify.getAttribute('href')).toContain(MFA_CHALLENGE_ROUTE);
+    expect(verify.classList).toContain('forum-btn--ghost');
+    expect(verify.textContent).toContain('on the login page instead');
+    expect(offer.querySelector('[data-testid="mod-step-up-dismiss"]')).not.toBeNull();
+    // Nothing was performed and the offer itself never retried.
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(1);
+    expect(component.detail()!.topic.locked).toBeFalse();
+    // Still on the topic: the live region says why.
+    expect(component.outcome()?.text).toContain('second-factor');
+  });
+
+  it('retries the IDENTICAL write exactly once after a satisfied challenge and applies it', async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(forum.moderateTopic).toHaveBeenCalledWith(10, 'lock');
+
+    // The session now carries a fresh stamp: the plain retry succeeds.
+    forum.moderateTopic.and.resolveTo();
+    stub().satisfied.emit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(2);
+    expect(forum.moderateTopic.calls.argsFor(1)).toEqual([10, 'lock']);
+    expect(component.detail()!.topic.locked).toBeTrue();
+    expect(component.outcome()).toEqual({ kind: 'status', text: 'Topic locked.' });
+    expect(component.stepUp()).toBeNull();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
+    expect(el().querySelector('[data-testid="mfa-challenge-view"]')).toBeNull();
+  });
+
+  it('does NOT loop: a retry refused with step-up AGAIN degrades to the link instead of re-mounting', async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    stub().satisfied.emit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(2);
+    expect(mfaStepUpRemoteLoader.load).toHaveBeenCalledTimes(1);
+    expect(component.stepUpMode()).toBe('link');
+    expect(component.detail()!.topic.locked).toBeFalse();
+    expect(el().querySelector('[data-testid="mfa-challenge-view"]')).toBeNull();
+    const verify = el().querySelector<HTMLAnchorElement>('[data-testid="mod-step-up-verify"]')!;
+    expect(verify.classList).not.toContain('forum-btn--ghost');
+    expect(verify.textContent).toContain('Verify with a second factor');
+    expect(component.outcome()?.kind).toBe('alert');
+  });
+
+  it('a retry that fails for another reason is the plain lock failure and clears the offer', async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    forum.moderateTopic.and.rejectWith(new Error('boom'));
+    stub().satisfied.emit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(2);
+    expect(component.stepUp()).toBeNull();
+    expect(component.outcome()?.text).toContain('Could not update the topic lock');
+    expect(component.detail()!.topic.locked).toBeFalse();
+  });
+
+  it('unmounts the dialog and degrades to the link when the MFA surface reports it ships dark', async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    stub().unavailable.emit();
+    fixture.detectChanges();
+
+    expect(component.stepUpMode()).toBe('link');
+    expect(el().querySelector('[data-testid="mfa-challenge-view"]')).toBeNull();
+    expect(el().querySelector('[data-testid="mod-step-up-verify"]')).not.toBeNull();
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dismissal raised inside the dialog clears the offer and does not retry", async () => {
+    canModerate.set(true);
+    federatedLoadResolves();
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    await component.toggleLock();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    stub().dismissed.emit();
+    fixture.detectChanges();
+
+    expect(component.stepUp()).toBeNull();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
+    expect(forum.moderateTopic).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a remote load that settles after the offer was dismissed', async () => {
+    canModerate.set(true);
+    let resolveLoad: (c: typeof StubMfaChallengeComponent) => void = () => {};
+    (mfaStepUpRemoteLoader.load as jasmine.Spy).and.returnValue(
+      new Promise<typeof StubMfaChallengeComponent>((res) => (resolveLoad = res)),
+    );
+    forum.moderateTopic.and.rejectWith(stepUpRefusal());
+    await render();
+    const toggled = component.toggleLock();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.stepUpMode()).toBe('loading');
+    expect(el().querySelector('[data-testid="mod-step-up-loading"]')).not.toBeNull();
+
+    component.dismissStepUp();
+    resolveLoad(StubMfaChallengeComponent);
+    await toggled;
+    fixture.detectChanges();
+
+    expect(component.stepUp()).toBeNull();
+    expect(component.stepUpChallenge()).toBeNull();
+    expect(el().querySelector('[data-testid="mod-step-up"]')).toBeNull();
   });
 
   // ── stored DOM-XSS regression ──────────────────────────────────────────────
