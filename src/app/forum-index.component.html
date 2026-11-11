@@ -16,10 +16,10 @@
       </button>
     }
     @if (canModerate()) {
-      <a routerLink="../moderation" class="forum-btn forum-btn--ghost" data-testid="forum-moderation-link">Moderation queue</a>
+      <a routerLink="moderation" class="forum-btn forum-btn--ghost" data-testid="forum-moderation-link">Moderation queue</a>
     }
     @if (canPost()) {
-      <a routerLink="../create-topic" class="forum-btn" data-testid="forum-new-topic">New topic</a>
+      <a routerLink="create-topic" class="forum-btn" data-testid="forum-new-topic">New topic</a>
     }
   </div>
 </header>
@@ -46,7 +46,7 @@
       <ul class="forum-category-list">
         @for (c of categories(); track trackId($index, c)) {
           <li class="forum-category">
-            <a [routerLink]="['../categories', c.id]" class="forum-category__link">
+            <a [routerLink]="['categories', c.id]" class="forum-category__link">
               <span class="forum-category__name">{{ c.name }}</span>
               <span class="forum-category__desc">{{ c.description }}</span>
             </a>
